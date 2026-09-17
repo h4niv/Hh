@@ -91,3 +91,34 @@ export interface OfficeConfig {
   workEndTime: string;
   lateToleranceMinutes: number;
 }
+
+export interface FingerprintDevice {
+  id: string;
+  name: string;
+  ipAddress: string; // e.g. "192.168.1.201"
+  port: number;      // e.g. 4370
+  commKey: string;   // e.g. "0"
+  protocol: 'ZKProtocol' | 'ADMS_HTTP' | 'Standalone_TCP';
+  location: string;  // e.g. "Lobby Kantor Lantai 1"
+  status: 'Online' | 'Offline' | 'Syncing';
+  lastSyncAt: string | null;
+  totalLogsFetched: number;
+  autoSyncIntervalMinutes: number; // e.g. 5
+  enabled: boolean;
+}
+
+export interface FingerprintPunchLog {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  userPin: string; // NIK or PIN in device
+  matchedEmployeeId?: string;
+  matchedEmployeeName?: string;
+  matchedEmployeeDepartment?: string;
+  timestamp: string; // "YYYY-MM-DD HH:mm:ss"
+  punchType: 'CheckIn' | 'CheckOut' | 'AutoDetect';
+  verifyMethod: 'Fingerprint' | 'Face' | 'RFID' | 'Password';
+  syncStatus: 'Synced' | 'Pending' | 'Ignored' | 'EmployeeNotFound';
+  syncedAttendanceId?: string;
+  notes?: string;
+}
