@@ -11,154 +11,148 @@ export interface SyncAgentConfig {
 }
 
 export function generateNodeSyncAgentCode(config: SyncAgentConfig): string {
-  return `/**
- * AbsensiPro - Standalone Fingerprint Sync Agent (Node.js)
- * 
- * Script ini dijalankan pada komputer kantor (Windows/Linux/Mac)
- * yang berada dalam satu jaringan LAN / Wi-Fi dengan mesin fingerprint (${config.deviceIp}).
- * 
- * Fitur:
- * - Menghubungkan ke Mesin Fingerprint (IP: ${config.deviceIp}, Port: ${config.devicePort})
- * - Menarik log absensi terbaru secara berkala (setiap ${config.pollIntervalSeconds} detik)
- * - Meneruskan log secara otomatis ke Cloud AbsensiPro: ${config.serverUrl}
- * - Auto-reconnect jika mesin mati / restart
- */
-
-const ZKLib = require('zklib-js'); // Library protokol TCP/UDP ZKTeco & Solution
-const http = require('http');
-const https = require('https');
-const { URL } = require('url');
-
-// KONFIGURASI MESIN & SERVER
-const CONFIG = {
-  DEVICE_IP: '${config.deviceIp}',
-  DEVICE_PORT: ${config.devicePort},
-  DEVICE_COMM_KEY: '${config.deviceCommKey}',
-  DEVICE_NAME: '${config.deviceName}',
-  SERVER_URL: '${config.serverUrl}',
-  API_KEY: '${config.apiKey}',
-  POLL_INTERVAL_SECONDS: ${config.pollIntervalSeconds},
-};
-
-console.log('====================================================');
-console.log('🚀 AbsensiPro Fingerprint Sync Agent - Starting...');
-console.log('Target Mesin : ' + CONFIG.DEVICE_NAME + ' (' + CONFIG.DEVICE_IP + ':' + CONFIG.DEVICE_PORT + ')');
-console.log('Cloud Server : ' + CONFIG.SERVER_URL);
-console.log('Interval Cek : ' + CONFIG.POLL_INTERVAL_SECONDS + ' detik');
-console.log('====================================================\\n');
-
-// Track timestamp log terakhir yang berhasil disinkronkan untuk mencegah duplikasi
-let lastProcessedTime = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-
-async function sendLogsToCloudServer(logs) {
-  if (!logs || logs.length === 0) return;
-
-  const payload = JSON.stringify({
-    apiKey: CONFIG.API_KEY,
-    deviceIp: CONFIG.DEVICE_IP,
-    deviceName: CONFIG.DEVICE_NAME,
-    timestamp: new Date().toISOString(),
-    logs: logs.map(item => ({
-      pin: String(item.deviceUserId || item.uid || item.userSn || item.pin),
-      timestamp: item.recordTime || item.timestamp,
-      punchType: item.punchType || (item.state === 1 ? 'CheckOut' : 'CheckIn'),
-      verifyMethod: item.verifyType === 1 ? 'Fingerprint' : (item.verifyType === 15 ? 'Face' : 'RFID'),
-    }))
-  });
-
-  const parsedUrl = new URL(CONFIG.SERVER_URL.replace(/\\/$/, '') + '/api/fingerprint/sync');
-  const isHttps = parsedUrl.protocol === 'https:';
-  const client = isHttps ? https : http;
-
-  return new Promise((resolve, reject) => {
-    const req = client.request(parsedUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        'Authorization': 'Bearer ' + CONFIG.API_KEY,
-      },
-      timeout: 10000,
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          console.log(\`✅ [OK] Berhasil mengirim \${logs.length} data log ke Cloud Server (\${res.statusCode})\`);
-          resolve(data);
-        } else {
-          console.error(\`⚠️ [WARN] Server merespon status \${res.statusCode}: \${data}\`);
-          resolve(null);
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      console.error('❌ [ERROR] Gagal mengirim data ke cloud server:', err.message);
-      resolve(null);
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      console.error('⏱️ [TIMEOUT] Pengiriman ke cloud server timeout.');
-      resolve(null);
-    });
-
-    req.write(payload);
-    req.end();
-  });
-}
-
-async function syncCycle() {
-  const zkInstance = new ZKLib(CONFIG.DEVICE_IP, CONFIG.DEVICE_PORT, 5000, 4000);
-
-  try {
-    process.stdout.write(\`[\${new Date().toLocaleTimeString('id-ID')}] Menghubungkan ke mesin \${CONFIG.DEVICE_IP}...\`);
-    await zkInstance.createSocket();
-    console.log(' Terhubung! ✓');
-
-    // Tarik daftar log absensi dari memori mesin
-    const logs = await zkInstance.getAttendances();
-    const records = (logs && logs.data) ? logs.data : (Array.isArray(logs) ? logs : []);
-    
-    console.log(\`   Total log tersimpan di mesin: \${records.length} data\`);
-
-    // Filter log baru berdasarkan waktu
-    const newLogs = records.filter(r => {
-      const recTime = new Date(r.recordTime).toISOString();
-      return recTime > lastProcessedTime;
-    });
-
-    if (newLogs.length > 0) {
-      console.log(\`⚡ Ditemukan \${newLogs.length} log presensi baru! Mengirimkan ke server...\`);
-      await sendLogsToCloudServer(newLogs);
-      
-      // Update waktu log terakhir
-      const newest = newLogs.reduce((max, r) => {
-        const t = new Date(r.recordTime).toISOString();
-        return t > max ? t : max;
-      }, lastProcessedTime);
-      lastProcessedTime = newest;
-    } else {
-      console.log('   Tidak ada tap sidik jari baru sejak sinkronisasi terakhir.');
-    }
-
-    // Putuskan koneksi soket agar mesin tidak terkunci
-    await zkInstance.disconnect();
-  } catch (err) {
-    console.error('❌ Gagal membaca mesin fingerprint:', err.message);
-    try {
-      await zkInstance.disconnect();
-    } catch (_) {}
-  }
-}
-
-// Jalankan sinkronisasi pertama kali
-syncCycle();
-
-// Jadwalkan loop berkala
-setInterval(syncCycle, CONFIG.POLL_INTERVAL_SECONDS * 1000);
-`;
+  return [
+    '/**',
+    ' * AbsensiPro - Standalone Fingerprint Sync Agent (Node.js)',
+    ' * ',
+    ` * Script ini dijalankan pada komputer kantor (Windows/Linux/Mac)`,
+    ` * yang berada dalam satu jaringan LAN / Wi-Fi dengan mesin fingerprint (${config.deviceIp}).`,
+    ' * ',
+    ' * Fitur:',
+    ` * - Menghubungkan ke Mesin Fingerprint (IP: ${config.deviceIp}, Port: ${config.devicePort})`,
+    ` * - Menarik log absensi terbaru secara berkala (setiap ${config.pollIntervalSeconds} detik)`,
+    ` * - Meneruskan log secara otomatis ke Cloud AbsensiPro: ${config.serverUrl}`,
+    ' * - Auto-reconnect jika mesin mati / restart',
+    ' */',
+    '',
+    "const ZKLib = require('zklib-js');",
+    "const http = require('http');",
+    "const https = require('https');",
+    "const { URL } = require('url');",
+    '',
+    '// KONFIGURASI MESIN & SERVER',
+    'const CONFIG = {',
+    `  DEVICE_IP: '${config.deviceIp}',`,
+    `  DEVICE_PORT: ${config.devicePort},`,
+    `  DEVICE_COMM_KEY: '${config.deviceCommKey}',`,
+    `  DEVICE_NAME: '${config.deviceName}',`,
+    `  SERVER_URL: '${config.serverUrl}',`,
+    `  API_KEY: '${config.apiKey}',`,
+    `  POLL_INTERVAL_SECONDS: ${config.pollIntervalSeconds},`,
+    '};',
+    '',
+    "console.log('====================================================');",
+    "console.log('🚀 AbsensiPro Fingerprint Sync Agent - Starting...');",
+    "console.log('Target Mesin : ' + CONFIG.DEVICE_NAME + ' (' + CONFIG.DEVICE_IP + ':' + CONFIG.DEVICE_PORT + ')');",
+    "console.log('Cloud Server : ' + CONFIG.SERVER_URL);",
+    "console.log('Interval Cek : ' + CONFIG.POLL_INTERVAL_SECONDS + ' detik');",
+    "console.log('====================================================\\n');",
+    '',
+    'let lastProcessedTime = new Date(Date.now() - 24 * 3600 * 1000).toISOString();',
+    '',
+    'async function sendLogsToCloudServer(logs) {',
+    '  if (!logs || logs.length === 0) return;',
+    '',
+    '  const payload = JSON.stringify({',
+    '    apiKey: CONFIG.API_KEY,',
+    '    deviceIp: CONFIG.DEVICE_IP,',
+    '    deviceName: CONFIG.DEVICE_NAME,',
+    '    timestamp: new Date().toISOString(),',
+    '    logs: logs.map(item => ({',
+    '      pin: String(item.deviceUserId || item.uid || item.userSn || item.pin),',
+    '      timestamp: item.recordTime || item.timestamp,',
+    "      punchType: item.punchType || (item.state === 1 ? 'CheckOut' : 'CheckIn'),",
+    "      verifyMethod: item.verifyType === 1 ? 'Fingerprint' : (item.verifyType === 15 ? 'Face' : 'RFID'),",
+    '    }))',
+    '  });',
+    '',
+    "  const baseUrl = CONFIG.SERVER_URL.endsWith('/') ? CONFIG.SERVER_URL.slice(0, -1) : CONFIG.SERVER_URL;",
+    "  const parsedUrl = new URL(baseUrl + '/api/fingerprint/sync');",
+    "  const isHttps = parsedUrl.protocol === 'https:';",
+    '  const client = isHttps ? https : http;',
+    '',
+    '  return new Promise((resolve) => {',
+    '    const req = client.request(parsedUrl, {',
+    "      method: 'POST',",
+    '      headers: {',
+    "        'Content-Type': 'application/json',",
+    "        'Content-Length': Buffer.byteLength(payload),",
+    "        'Authorization': 'Bearer ' + CONFIG.API_KEY,",
+    '      },',
+    '      timeout: 10000,',
+    '    }, (res) => {',
+    "      let data = '';",
+    "      res.on('data', chunk => data += chunk);",
+    "      res.on('end', () => {",
+    '        if (res.statusCode >= 200 && res.statusCode < 300) {',
+    "          console.log('✅ [OK] Berhasil mengirim ' + logs.length + ' data log ke Cloud Server (' + res.statusCode + ')');",
+    '          resolve(data);',
+    '        } else {',
+    "          console.error('⚠️ [WARN] Server merespon status ' + res.statusCode + ': ' + data);",
+    '          resolve(null);',
+    '        }',
+    '      });',
+    '    });',
+    '',
+    "    req.on('error', (err) => {",
+    "      console.error('❌ [ERROR] Gagal mengirim data ke cloud server:', err.message);",
+    '      resolve(null);',
+    '    });',
+    '',
+    "    req.on('timeout', () => {",
+    '      req.destroy();',
+    "      console.error('⏱️ [TIMEOUT] Pengiriman ke cloud server timeout.');",
+    '      resolve(null);',
+    '    });',
+    '',
+    '    req.write(payload);',
+    '    req.end();',
+    '  });',
+    '}',
+    '',
+    'async function syncCycle() {',
+    '  const zkInstance = new ZKLib(CONFIG.DEVICE_IP, CONFIG.DEVICE_PORT, 5000, 4000);',
+    '',
+    '  try {',
+    "    process.stdout.write('[' + new Date().toLocaleTimeString('id-ID') + '] Menghubungkan ke mesin ' + CONFIG.DEVICE_IP + '...');",
+    '    await zkInstance.createSocket();',
+    "    console.log(' Terhubung! ✓');",
+    '',
+    '    const logs = await zkInstance.getAttendances();',
+    '    const records = (logs && logs.data) ? logs.data : (Array.isArray(logs) ? logs : []);',
+    '',
+    "    console.log('   Total log tersimpan di mesin: ' + records.length + ' data');",
+    '',
+    '    const newLogs = records.filter(r => {',
+    '      const recTime = new Date(r.recordTime).toISOString();',
+    '      return recTime > lastProcessedTime;',
+    '    });',
+    '',
+    '    if (newLogs.length > 0) {',
+    "      console.log('⚡ Ditemukan ' + newLogs.length + ' log presensi baru! Mengirimkan ke server...');",
+    '      await sendLogsToCloudServer(newLogs);',
+    '',
+    '      const newest = newLogs.reduce((max, r) => {',
+    '        const t = new Date(r.recordTime).toISOString();',
+    '        return t > max ? t : max;',
+    '      }, lastProcessedTime);',
+    '      lastProcessedTime = newest;',
+    '    } else {',
+    "      console.log('   Tidak ada tap sidik jari baru sejak sinkronisasi terakhir.');",
+    '    }',
+    '',
+    '    await zkInstance.disconnect();',
+    '  } catch (err) {',
+    "    console.error('❌ Gagal membaca mesin fingerprint:', err.message);",
+    '    try {',
+    '      await zkInstance.disconnect();',
+    '    } catch (_) {}',
+    '  }',
+    '}',
+    '',
+    'syncCycle();',
+    'setInterval(syncCycle, CONFIG.POLL_INTERVAL_SECONDS * 1000);',
+  ].join('\n');
 }
 
 export function generatePythonSyncAgentCode(config: SyncAgentConfig): string {

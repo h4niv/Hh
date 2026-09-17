@@ -16,7 +16,7 @@ import {
   User
 } from 'lucide-react';
 import { Employee, AttendanceRecord, OfficeConfig } from '../types';
-import { generateNodeSyncAgentCode, SyncAgentConfig } from '../utils/syncAgentTemplates';
+import { generateNodeSyncAgentCode, generatePackageJson, generateWindowsBatchScript, SyncAgentConfig } from '../utils/syncAgentTemplates';
 import { calculateLateMinutes, calculateEarlyMinutes, getTodayDateString } from '../utils/geo';
 
 interface FingerprintModalProps {
@@ -36,7 +36,7 @@ export default function FingerprintModal({
   attendanceRecords,
   onAddOrUpdateRecords,
 }: FingerprintModalProps) {
-  const [activeTab, setActiveTab] = useState<'agent' | 'upload' | 'simulate' | 'guide'>('agent');
+  const [activeTab, setActiveTab] = useState<'agent' | 'upload' | 'simulate' | 'guide' | 'error-guide'>('agent');
   const [copied, setCopied] = useState<boolean>(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -85,6 +85,32 @@ export default function FingerprintModal({
     const a = document.createElement('a');
     a.href = url;
     a.download = 'fingerprint-sync-agent.js';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPackageJson = () => {
+    const pkgCode = generatePackageJson();
+    const blob = new Blob([pkgCode], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'package.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadBatch = () => {
+    const batCode = generateWindowsBatchScript();
+    const blob = new Blob([batCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'run-agent.bat';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -345,6 +371,17 @@ export default function FingerprintModal({
             <Wifi className="w-3.5 h-3.5" />
             <span>Panduan & Protokol</span>
           </button>
+          <button
+            onClick={() => setActiveTab('error-guide')}
+            className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+              activeTab === 'error-guide'
+                ? 'border-rose-600 text-rose-600 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+            <span>Solusi Error Script 🛠️</span>
+          </button>
         </div>
 
         {/* Body Content */}
@@ -521,31 +558,87 @@ export default function FingerprintModal({
               </div>
 
               {/* Code Preview */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">Preview Script (fingerprint-sync-agent.js)</span>
-                  <div className="flex gap-2">
+                  <span className="text-xs font-bold text-slate-800">File & Script Sync Agent (Lengkap)</span>
+                  <div className="flex gap-1.5 flex-wrap">
                     <button
                       type="button"
-                      onClick={handleCopyScript}
-                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                      onClick={handleDownloadPackageJson}
+                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                     >
-                      {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                      {copied ? 'Tersalin!' : 'Salin Script'}
+                      <Download className="w-3 h-3 text-indigo-600" />
+                      <span>package.json</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadBatch}
+                      className="text-[11px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Download className="w-3 h-3 text-emerald-600" />
+                      <span>run-agent.bat</span>
                     </button>
                     <button
                       type="button"
                       onClick={handleDownloadScript}
-                      className="text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                      className="text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
                     >
                       <Download className="w-3 h-3" />
-                      <span>Download .js</span>
+                      <span>fingerprint-sync-agent.js</span>
                     </button>
                   </div>
                 </div>
-                <pre className="p-3 bg-slate-900 text-slate-200 text-[10px] font-mono rounded-xl max-h-48 overflow-y-auto">
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900">
+                  <p className="font-semibold">Tips agar tidak error:</p>
+                  <p className="text-amber-800">Unduh ketiganya (<code>package.json</code>, <code>run-agent.bat</code>, dan <code>.js</code>) ke dalam satu folder di komputer kantor, lalu jalankan <strong>run-agent.bat</strong>.</p>
+                </div>
+                <pre className="p-3 bg-slate-900 text-slate-200 text-[10px] font-mono rounded-xl max-h-40 overflow-y-auto">
                   {scriptCode}
                 </pre>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'error-guide' && (
+            <div className="space-y-3.5 text-xs text-slate-700 leading-relaxed">
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-1.5">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  Pusat Solusi Error Script & Koneksi Mesin
+                </p>
+                <p className="text-[11px] text-rose-800">
+                  Berikut adalah solusi untuk kendala umum saat menjalankan script sinkronisasi di komputer kantor.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <p className="font-bold text-slate-900 text-xs">1. Error: Cannot find module 'zklib-js'</p>
+                  <p className="text-[11px] text-slate-600">
+                    <strong>Penyebab:</strong> Anda belum menginstal library dependensi Node.js di folder tersebut.<br />
+                    <strong>Solusi:</strong> Download file <code>package.json</code> di tab Agent, letakkan di folder yang sama, lalu jalankan perintah <code>npm install</code> melalui Command Prompt/Terminal. Atau gunakan file <code>run-agent.bat</code> yang akan menginstalnya secara otomatis.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <p className="font-bold text-slate-900 text-xs">2. Error: ETIMEDOUT / ECONNREFUSED (Gagal Menghubungkan ke Mesin)</p>
+                  <p className="text-[11px] text-slate-600">
+                    <strong>Penyebab:</strong> Komputer tidak dapat menjangkau IP Address mesin fingerprint.<br />
+                    <strong>Solusi:</strong> 
+                    <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                      <li>Pastikan komputer dan mesin fingerprint berada dalam satu jaringan router / LAN / Wi-Fi yang sama.</li>
+                      <li>Tes koneksi dengan membuka Command Prompt lalu ketik: <code>ping 192.168.1.201</code> (sesuaikan IP mesin Anda).</li>
+                      <li>Matikan sementara Windows Firewall atau Antivirus jika memblokir port UDP 4370.</li>
+                    </ul>
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <p className="font-bold text-slate-900 text-xs">3. Solusi Instan Tanpa Script (Alternatif Teraman)</p>
+                  <p className="text-[11px] text-slate-600">
+                    Jika terkendala firewall atau konfigurasi jaringan kantor, Anda tetap dapat menggunakan menu <strong>Import File Log (CSV/DAT)</strong>. Cukup export data absensi dari mesin menggunakan flashdisk USB ke format Excel/CSV, lalu upload ke aplikasi ini.
+                  </p>
+                </div>
               </div>
             </div>
           )}
