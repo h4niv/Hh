@@ -11,6 +11,8 @@ export type LeaveType = 'Cuti Tahunan' | 'Izin Pribadi' | 'Sakit' | 'Cuti Melahi
 
 export type LeaveStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 
+export type SystemRole = 'admin' | 'karyawan';
+
 export interface ShiftInfo {
   id: string;
   name: string;
@@ -27,6 +29,7 @@ export interface Employee {
   phone: string;
   department: string;
   role: string;
+  systemRole: SystemRole;
   avatarUrl: string;
   shift: ShiftInfo;
   remainingLeaveQuota: number;

@@ -14,7 +14,7 @@ import {
   Users
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Employee, ShiftInfo } from '../types';
+import { Employee, ShiftInfo, SystemRole } from '../types';
 
 interface ImportEmployeeModalProps {
   isOpen: boolean;
@@ -32,6 +32,7 @@ interface ParsedEmployeeRow {
   phone: string;
   department: string;
   role: string;
+  systemRole: SystemRole;
   startTime: string;
   endTime: string;
   lateTolerance: number;
@@ -77,6 +78,7 @@ export default function ImportEmployeeModal({
       {
         'NIK': 'KRY-2024-006',
         'Nama Lengkap': 'Ahmad Fauzi',
+        'Role Akses': 'Karyawan',
         'Email': 'ahmad.fauzi@sinergi.co.id',
         'No Telepon': '081234567891',
         'Departemen': 'Teknologi & Informasi',
@@ -89,6 +91,7 @@ export default function ImportEmployeeModal({
       {
         'NIK': 'KRY-2024-007',
         'Nama Lengkap': 'Dewi Sartika',
+        'Role Akses': 'Administrator',
         'Email': 'dewi.sartika@sinergi.co.id',
         'No Telepon': '081398765432',
         'Departemen': 'Keuangan & Akuntansi',
@@ -101,6 +104,7 @@ export default function ImportEmployeeModal({
       {
         'NIK': 'KRY-2024-008',
         'Nama Lengkap': 'Bagus Prasetyo',
+        'Role Akses': 'Karyawan',
         'Email': 'bagus.prasetyo@sinergi.co.id',
         'No Telepon': '082155443322',
         'Departemen': 'Operasional & Logistik',
@@ -193,6 +197,8 @@ export default function ImportEmployeeModal({
         const phone = getVal(['no telepon', 'telepon', 'phone', 'no hp', 'whatsapp', 'no wa']);
         const dept = getVal(['departemen', 'divisi', 'department', 'bagian', 'unit']) || departments[0] || 'Umum';
         const role = getVal(['jabatan', 'posisi', 'role', 'title', 'position']) || 'Staff';
+        const systemRoleVal = getVal(['role akses', 'role sistem', 'system role', 'hak akses', 'role akses sistem']);
+        const systemRole: SystemRole = systemRoleVal.toLowerCase().includes('admin') ? 'admin' : 'karyawan';
         const startTime = getVal(['jam masuk', 'start time', 'masuk']) || '08:30';
         const endTime = getVal(['jam pulang', 'end time', 'pulang', 'keluar']) || '17:30';
         const lateTolStr = getVal(['toleransi menit', 'toleransi', 'tolerance', 'late tolerance']);
@@ -232,6 +238,7 @@ export default function ImportEmployeeModal({
           phone: phone || '-',
           department: dept,
           role,
+          systemRole,
           startTime,
           endTime,
           lateTolerance,
@@ -318,6 +325,7 @@ export default function ImportEmployeeModal({
         phone: row.phone,
         department: row.department,
         role: row.role,
+        systemRole: existing?.systemRole || row.systemRole || 'karyawan',
         avatarUrl: avatar,
         shift,
         remainingLeaveQuota: row.leaveQuota,

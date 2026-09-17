@@ -9,7 +9,11 @@ import {
   ChevronDown,
   MapPin,
   Users,
-  UserPlus
+  UserPlus,
+  ShieldCheck,
+  ShieldAlert,
+  User,
+  Lock
 } from 'lucide-react';
 import { Employee, OfficeConfig } from '../types';
 
@@ -36,6 +40,9 @@ export default function Header({
 }: HeaderProps) {
   const [time, setTime] = useState(new Date());
   const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
+  const [dropdownRoleFilter, setDropdownRoleFilter] = useState<'all' | 'admin' | 'karyawan'>('all');
+
+  const isAdmin = currentEmployee.systemRole === 'admin';
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -54,6 +61,12 @@ export default function Header({
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
+  });
+
+  const filteredDropdownEmployees = employees.filter((emp) => {
+    if (dropdownRoleFilter === 'admin') return emp.systemRole === 'admin';
+    if (dropdownRoleFilter === 'karyawan') return emp.systemRole !== 'admin';
+    return true;
   });
 
   return (
@@ -101,30 +114,57 @@ export default function Header({
             </div>
           </div>
 
-          {/* Right: Employee Profile Switcher */}
+          {/* Right: Employee Profile Switcher with Role Badge */}
           <div className="relative">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 hidden sm:inline">Karyawan:</span>
+              <span className="text-xs text-slate-500 hidden sm:inline">Pengguna Aktif:</span>
               <button
                 type="button"
                 id="employee-selector-btn"
                 onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
-                className="flex items-center gap-3 p-1.5 pr-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-colors shadow-2xs text-left"
+                className={`flex items-center gap-3 p-1.5 pr-3 rounded-xl border transition-all shadow-2xs text-left cursor-pointer ${
+                  isAdmin 
+                    ? 'border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50' 
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}
               >
-                <img
-                  src={currentEmployee.avatarUrl}
-                  alt={currentEmployee.name}
-                  className="w-8 h-8 rounded-lg object-cover border border-slate-200"
-                />
+                <div className="relative">
+                  <img
+                    src={currentEmployee.avatarUrl}
+                    alt={currentEmployee.name}
+                    className="w-8 h-8 rounded-lg object-cover border border-slate-200"
+                  />
+                  {isAdmin && (
+                    <span 
+                      className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-600 rounded-full border border-white flex items-center justify-center"
+                      title="Role: Administrator"
+                    >
+                      <ShieldCheck className="w-2.5 h-2.5 text-white" />
+                    </span>
+                  )}
+                </div>
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-slate-800 truncate">{currentEmployee.name}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-slate-800 truncate">{currentEmployee.name}</span>
+                    {isAdmin ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200">
+                        <ShieldCheck className="w-2.5 h-2.5 text-indigo-600" />
+                        Admin
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium border border-slate-200">
+                        <User className="w-2.5 h-2.5 text-slate-400" />
+                        Karyawan
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-slate-500 truncate">{currentEmployee.nik} • {currentEmployee.department}</div>
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
               </button>
             </div>
 
-            {/* Dropdown Menu for Switch Employee */}
+            {/* Dropdown Menu for Switch Employee & Role Filter */}
             {isEmployeeDropdownOpen && (
               <>
                 <div
@@ -133,50 +173,129 @@ export default function Header({
                 />
                 <div 
                   id="employee-dropdown-list"
-                  className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+                  className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
                 >
-                  <div className="px-3 py-2 border-b border-slate-100">
-                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Pilih Profil Karyawan</p>
-                    <p className="text-[11px] text-slate-400">Ganti akun untuk simulasi absensi tim</p>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
-                    {employees.map((emp) => {
-                      const isSelected = emp.id === currentEmployee.id;
-                      return (
-                        <button
-                          key={emp.id}
-                          id={`select-emp-${emp.id}`}
-                          type="button"
-                          onClick={() => {
-                            onSelectEmployee(emp);
-                            setIsEmployeeDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors ${
-                            isSelected ? 'bg-blue-50/70' : ''
-                          }`}
-                        >
-                          <img
-                            src={emp.avatarUrl}
-                            alt={emp.name}
-                            className="w-8 h-8 rounded-lg object-cover border border-slate-200"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <span className={`text-xs font-medium truncate ${isSelected ? 'text-blue-700 font-semibold' : 'text-slate-800'}`}>
-                                {emp.name}
-                              </span>
-                              {isSelected && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold">Aktif</span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-500 truncate">{emp.role} • {emp.department}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <div className="px-3.5 py-2.5 border-b border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">Pilih Akun & Role</p>
+                      <span className="text-[11px] text-slate-400">Total: {employees.length} Karyawan</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Ganti akun untuk menguji fitur sebagai <strong>Administrator</strong> atau <strong>Karyawan</strong>
+                    </p>
+
+                    {/* Role Filter Tabs */}
+                    <div className="flex items-center gap-1 mt-2.5 p-0.5 bg-slate-100 rounded-lg text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setDropdownRoleFilter('all')}
+                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer ${
+                          dropdownRoleFilter === 'all'
+                            ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Semua ({employees.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDropdownRoleFilter('admin')}
+                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          dropdownRoleFilter === 'admin'
+                            ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                            : 'text-indigo-700 hover:bg-indigo-50'
+                        }`}
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        Admin ({employees.filter(e => e.systemRole === 'admin').length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDropdownRoleFilter('karyawan')}
+                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          dropdownRoleFilter === 'karyawan'
+                            ? 'bg-slate-700 text-white shadow-2xs font-semibold'
+                            : 'text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <User className="w-3 h-3" />
+                        Karyawan ({employees.filter(e => e.systemRole !== 'admin').length})
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="p-2 border-t border-slate-100 bg-slate-50/90">
+                  <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                    {filteredDropdownEmployees.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400">
+                        Tidak ada pengguna pada kategori ini.
+                      </div>
+                    ) : (
+                      filteredDropdownEmployees.map((emp) => {
+                        const isSelected = emp.id === currentEmployee.id;
+                        const isEmpAdmin = emp.systemRole === 'admin';
+
+                        return (
+                          <button
+                            key={emp.id}
+                            id={`select-emp-${emp.id}`}
+                            type="button"
+                            onClick={() => {
+                              onSelectEmployee(emp);
+                              setIsEmployeeDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors cursor-pointer ${
+                              isSelected ? 'bg-blue-50/70' : ''
+                            }`}
+                          >
+                            <div className="relative shrink-0">
+                              <img
+                                src={emp.avatarUrl}
+                                alt={emp.name}
+                                className="w-9 h-9 rounded-lg object-cover border border-slate-200"
+                              />
+                              {isEmpAdmin && (
+                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-600 rounded-full border border-white flex items-center justify-center" title="Administrator">
+                                  <ShieldCheck className="w-2.5 h-2.5 text-white" />
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className={`text-xs font-medium truncate ${isSelected ? 'text-blue-700 font-bold' : 'text-slate-800'}`}>
+                                  {emp.name}
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {isEmpAdmin ? (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 flex items-center gap-0.5">
+                                      <ShieldCheck className="w-2.5 h-2.5" />
+                                      Admin
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
+                                      Karyawan
+                                    </span>
+                                  )}
+                                  {isSelected && (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 font-semibold">Aktif</span>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-slate-500 truncate">{emp.role} • {emp.department}</p>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="p-2 border-t border-slate-100 bg-slate-50/90 flex flex-col gap-1.5">
+                    <div className="px-2 py-1 text-[11px] text-slate-500 bg-amber-50/80 border border-amber-200/80 rounded-lg flex items-start gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Role Admin</strong> memiliki akses persetujuan cuti, kelola master karyawan, dan pengaturan kantor.
+                      </span>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -200,7 +319,7 @@ export default function Header({
 
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs with Admin Badge Indicators */}
         <div className="mt-3 flex items-center gap-1 sm:gap-2 border-t border-slate-100 pt-2 overflow-x-auto">
           <button
             type="button"
@@ -256,6 +375,13 @@ export default function Header({
           >
             <Users className="w-4 h-4" />
             <span>Data Karyawan</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+              activeTab === 'karyawan' 
+                ? 'bg-blue-700/60 text-blue-100' 
+                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+            }`}>
+              Admin
+            </span>
           </button>
 
           <button
@@ -270,6 +396,13 @@ export default function Header({
           >
             <SlidersHorizontal className="w-4 h-4" />
             <span>Pengaturan Kantor</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+              activeTab === 'pengaturan' 
+                ? 'bg-blue-700/60 text-blue-100' 
+                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+            }`}>
+              Admin
+            </span>
           </button>
         </div>
 

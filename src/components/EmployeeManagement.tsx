@@ -20,10 +20,14 @@ import {
   BadgePercent,
   Sparkles,
   FileSpreadsheet,
-  Download
+  Download,
+  ShieldCheck,
+  ShieldAlert,
+  User,
+  Shield
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Employee, ShiftInfo } from '../types';
+import { Employee, ShiftInfo, SystemRole } from '../types';
 import ImportEmployeeModal from './ImportEmployeeModal';
 
 interface EmployeeManagementProps {
@@ -80,6 +84,7 @@ export default function EmployeeManagement({
   const [department, setDepartment] = useState('');
   const [customDepartment, setCustomDepartment] = useState('');
   const [role, setRole] = useState('');
+  const [systemRole, setSystemRole] = useState<SystemRole>('karyawan');
   const [avatarUrl, setAvatarUrl] = useState(PRESET_AVATARS[0]);
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
   const [shiftName, setShiftName] = useState('Reguler');
@@ -87,6 +92,9 @@ export default function EmployeeManagement({
   const [workEndTime, setWorkEndTime] = useState('17:30');
   const [lateTolerance, setLateTolerance] = useState(15);
   const [leaveQuota, setLeaveQuota] = useState(12);
+
+  // Filters
+  const [selectedRole, setSelectedRole] = useState<'all' | 'admin' | 'karyawan'>('all');
 
   // Form error message
   const [formError, setFormError] = useState<string | null>(null);
@@ -103,6 +111,7 @@ export default function EmployeeManagement({
     setDepartment(departments[0] || 'Teknologi & Informasi');
     setCustomDepartment('');
     setRole('');
+    setSystemRole('karyawan');
     setAvatarUrl(PRESET_AVATARS[nextNum % PRESET_AVATARS.length]);
     setCustomAvatarUrl('');
     setShiftName('Reguler');
@@ -129,6 +138,7 @@ export default function EmployeeManagement({
       setCustomDepartment(emp.department);
     }
     setRole(emp.role);
+    setSystemRole(emp.systemRole || 'karyawan');
     setAvatarUrl(emp.avatarUrl);
     setCustomAvatarUrl('');
     setShiftName(emp.shift.name.split(' (')[0] || 'Reguler');
@@ -146,6 +156,26 @@ export default function EmployeeManagement({
     setFormError(null);
     if (onCloseAddModalInitially) {
       onCloseAddModalInitially();
+    }
+  };
+
+  // Quick toggle role directly from table
+  const handleToggleRole = (emp: Employee) => {
+    if (emp.systemRole === 'admin') {
+      const adminCount = employees.filter((e) => e.systemRole === 'admin').length;
+      if (adminCount <= 1) {
+        alert('Sistem harus memiliki minimal satu Administrator aktif.');
+        return;
+      }
+      onEditEmployee({
+        ...emp,
+        systemRole: 'karyawan',
+      });
+    } else {
+      onEditEmployee({
+        ...emp,
+        systemRole: 'admin',
+      });
     }
   };
 
@@ -224,6 +254,7 @@ export default function EmployeeManagement({
         phone: phone.trim(),
         department: finalDept,
         role: role.trim(),
+        systemRole,
         avatarUrl: finalAvatar,
         shift: finalShift,
         remainingLeaveQuota: Number(leaveQuota),
@@ -236,6 +267,7 @@ export default function EmployeeManagement({
         phone: phone.trim(),
         department: finalDept,
         role: role.trim(),
+        systemRole,
         avatarUrl: finalAvatar,
         shift: finalShift,
         remainingLeaveQuota: Number(leaveQuota),
@@ -257,9 +289,13 @@ export default function EmployeeManagement({
       const matchDept =
         selectedDepartment === 'all' || emp.department === selectedDepartment;
 
-      return matchSearch && matchDept;
+      const matchRole =
+        selectedRole === 'all' ||
+        (selectedRole === 'admin' ? emp.systemRole === 'admin' : emp.systemRole !== 'admin');
+
+      return matchSearch && matchDept && matchRole;
     });
-  }, [employees, searchQuery, selectedDepartment]);
+  }, [employees, searchQuery, selectedDepartment, selectedRole]);
 
   // Handle Export all employees to Excel (.xlsx)
   const handleExportToExcel = () => {
@@ -267,6 +303,7 @@ export default function EmployeeManagement({
       'No': idx + 1,
       'NIK': emp.nik,
       'Nama Lengkap': emp.name,
+      'Role Akses': emp.systemRole === 'admin' ? 'Administrator' : 'Karyawan',
       'Email': emp.email,
       'No Telepon': emp.phone,
       'Departemen': emp.department,
@@ -282,6 +319,7 @@ export default function EmployeeManagement({
       { wch: 6 },
       { wch: 16 },
       { wch: 24 },
+      { wch: 18 },
       { wch: 30 },
       { wch: 18 },
       { wch: 25 },
@@ -297,9 +335,28 @@ export default function EmployeeManagement({
     XLSX.writeFile(workbook, `Data_Karyawan_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  const isAdmin = currentEmployee.systemRole === 'admin';
+
   return (
     <div className="space-y-6" id="employee-management-view">
       
+      {/* Role Alert Banner if logged in as regular employee */}
+      {!isAdmin && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-start gap-2.5">
+            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold text-sm text-amber-950 block">Mode Tinjauan Karyawan</span>
+              <p className="text-amber-800 mt-0.5">
+                Akun Anda saat ini (<strong>{currentEmployee.name}</strong>) memiliki role <strong>Karyawan</strong>. 
+                Fitur pendaftaran, penyesuaian role, dan penghapusan data karyawan di bawah ditujukan bagi <strong>Administrator</strong>. 
+                Ganti profil ke akun Admin via menu di pojok kanan atas untuk akses penuh.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner & Action */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-2xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -313,7 +370,7 @@ export default function EmployeeManagement({
               </h2>
             </div>
             <p className="text-xs sm:text-sm text-slate-500">
-              Kelola data master karyawan, jam kerja shift, kuota cuti tahunan, serta impor data via spreadsheet Excel (.xls/.xlsx).
+              Kelola data master karyawan, penetapan role Administrator & Karyawan, jadwal shift kerja, kuota cuti, serta impor spreadsheet Excel.
             </p>
           </div>
 
@@ -355,24 +412,33 @@ export default function EmployeeManagement({
           </div>
         </div>
 
-        {/* Quick Stats Summary */}
-        <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        {/* Quick Stats Summary with Administrator Breakdown */}
+        <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-medium text-slate-500">Total Karyawan</span>
             <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">{employees.length} Orang</div>
+          </div>
+          <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100">
+            <span className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Administrator
+            </span>
+            <div className="text-lg sm:text-xl font-bold text-indigo-900 mt-0.5">
+              {employees.filter((e) => e.systemRole === 'admin').length} Orang
+            </div>
+          </div>
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-[11px] font-medium text-slate-500">Karyawan Biasa</span>
+            <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">
+              {employees.filter((e) => e.systemRole !== 'admin').length} Orang
+            </div>
           </div>
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-medium text-slate-500">Departemen</span>
             <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">{departments.length} Divisi</div>
           </div>
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-            <span className="text-[11px] font-medium text-slate-500">Profil Aktif</span>
-            <div className="text-xs sm:text-sm font-bold text-blue-700 mt-1 truncate">
-              {currentEmployee.name}
-            </div>
-          </div>
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-            <span className="text-[11px] font-medium text-slate-500">Rata-rata Kuota Cuti</span>
+            <span className="text-[11px] font-medium text-slate-500">Rata-rata Cuti</span>
             <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">
               {employees.length > 0 
                 ? (employees.reduce((acc, e) => acc + e.remainingLeaveQuota, 0) / employees.length).toFixed(1)
@@ -382,9 +448,9 @@ export default function EmployeeManagement({
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
+      {/* Filter and Search Bar with Role Filter */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
+        <div className="relative w-full md:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -404,20 +470,37 @@ export default function EmployeeManagement({
           )}
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-          <select
-            value={selectedDepartment}
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="w-full sm:w-48 py-2 px-3 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-          >
-            <option value="all">Semua Departemen ({employees.length})</option>
-            {departments.map((dept) => (
-              <option key={dept} value={dept}>
-                {dept} ({employees.filter(e => e.department === dept).length})
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full md:w-auto">
+          {/* Role Filter */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <Shield className="w-4 h-4 text-indigo-500 shrink-0" />
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value as 'all' | 'admin' | 'karyawan')}
+              className="w-full sm:w-44 py-2 px-3 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Semua Role ({employees.length})</option>
+              <option value="admin">🛡️ Administrator ({employees.filter(e => e.systemRole === 'admin').length})</option>
+              <option value="karyawan">👤 Karyawan ({employees.filter(e => e.systemRole !== 'admin').length})</option>
+            </select>
+          </div>
+
+          {/* Department Filter */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+            <select
+              value={selectedDepartment}
+              onChange={(e) => setSelectedDepartment(e.target.value)}
+              className="w-full sm:w-48 py-2 px-3 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Semua Departemen ({employees.length})</option>
+              {departments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept} ({employees.filter(e => e.department === dept).length})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -485,6 +568,17 @@ export default function EmployeeManagement({
                         <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
                           {emp.nik}
                         </span>
+                        {emp.systemRole === 'admin' ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
+                            <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                            Administrator
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                            <User className="w-3 h-3 text-slate-400" />
+                            Karyawan
+                          </span>
+                        )}
                         {isSelected && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold border border-blue-200">
                             Aktif di Sesi Ini
@@ -564,6 +658,22 @@ export default function EmployeeManagement({
                         Profil Saat Ini
                       </span>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleRole(emp)}
+                      className={`px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border cursor-pointer ${
+                        emp.systemRole === 'admin'
+                          ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                      title={emp.systemRole === 'admin' ? 'Ubah menjadi Karyawan Biasa' : 'Jadikan Administrator'}
+                    >
+                      <ShieldCheck className={`w-3.5 h-3.5 ${emp.systemRole === 'admin' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                      <span className="hidden sm:inline">
+                        {emp.systemRole === 'admin' ? 'Role: Admin' : 'Set Admin'}
+                      </span>
+                    </button>
 
                     <button
                       type="button"
@@ -792,6 +902,68 @@ export default function EmployeeManagement({
                 </div>
               </div>
 
+              {/* System Role Selector */}
+              <div className="space-y-2 pt-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Role Akses Sistem Presensi <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setSystemRole('karyawan')}
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                      systemRole === 'karyawan'
+                        ? 'border-blue-600 bg-blue-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      id="role-karyawan"
+                      name="systemRoleInput"
+                      checked={systemRole === 'karyawan'}
+                      onChange={() => setSystemRole('karyawan')}
+                      className="mt-0.5 text-blue-600"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                        <User className="w-3.5 h-3.5 text-slate-500" />
+                        Karyawan Biasa
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        Presensi mandiri (selfie & GPS), pengajuan izin/cuti sendiri, serta rekap riwayat pribadi.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSystemRole('admin')}
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                      systemRole === 'admin'
+                        ? 'border-indigo-600 bg-indigo-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      id="role-admin"
+                      name="systemRoleInput"
+                      checked={systemRole === 'admin'}
+                      onChange={() => setSystemRole('admin')}
+                      className="mt-0.5 text-indigo-600"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
+                        <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                        Administrator Sistem
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        Hak akses penuh: persetujuan cuti tim, kelola master karyawan & shift, input manual, dan koordinat kantor.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Shift & Working Hours Section */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
@@ -896,44 +1068,65 @@ export default function EmployeeManagement({
       )}
 
       {/* Confirmation Delete Dialog */}
-      {employeeToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
-              <Trash2 className="w-6 h-6" />
-            </div>
+      {employeeToDelete && (() => {
+        const isDeletingLastAdmin =
+          employeeToDelete.systemRole === 'admin' &&
+          employees.filter((e) => e.systemRole === 'admin').length <= 1;
 
-            <div className="space-y-1">
-              <h3 className="text-base font-bold text-slate-900">
-                Hapus Data Karyawan?
-              </h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Apakah Anda yakin ingin menghapus data karyawan <strong className="text-slate-900">{employeeToDelete.name}</strong> ({employeeToDelete.nik})? Data ini akan dihapus dari sistem presensi.
-              </p>
-            </div>
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                <Trash2 className="w-6 h-6" />
+              </div>
 
-            <div className="pt-2 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEmployeeToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onDeleteEmployee(employeeToDelete.id);
-                  setEmployeeToDelete(null);
-                }}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
-              >
-                Ya, Hapus Karyawan
-              </button>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Hapus Data Karyawan?
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Apakah Anda yakin ingin menghapus data karyawan <strong className="text-slate-900">{employeeToDelete.name}</strong> ({employeeToDelete.nik})? Data ini akan dihapus dari sistem presensi.
+                </p>
+
+                {isDeletingLastAdmin && (
+                  <div className="p-3 mt-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Peringatan Keamanan:</strong> {employeeToDelete.name} adalah satu-satunya akun dengan hak akses <strong>Administrator</strong>. Anda tidak dapat menghapus akun ini sebelum menetapkan akun lain sebagai Administrator.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEmployeeToDelete(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingLastAdmin}
+                  onClick={() => {
+                    if (isDeletingLastAdmin) return;
+                    onDeleteEmployee(employeeToDelete.id);
+                    setEmployeeToDelete(null);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-white text-xs font-semibold shadow-xs ${
+                    isDeletingLastAdmin
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                  }`}
+                >
+                  Ya, Hapus Karyawan
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Modal: Import Excel (.xls / .xlsx) */}
       <ImportEmployeeModal

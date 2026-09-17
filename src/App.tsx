@@ -243,8 +243,8 @@ export default function App() {
           return {
             ...req,
             status: newStatus,
-            approvedBy: 'Siti Nurhaliza (HRD)',
-            notes: newStatus === 'Disetujui' ? 'Disetujui oleh HR Manager' : 'Ditolak karena kebutuhan operasional tim',
+            approvedBy: `${currentEmployee.name} (${currentEmployee.systemRole === 'admin' ? 'Administrator' : currentEmployee.role})`,
+            notes: newStatus === 'Disetujui' ? 'Disetujui oleh Administrator' : 'Ditolak oleh Administrator',
           };
         }
         return req;
@@ -359,6 +359,10 @@ export default function App() {
       return;
     }
     const empToDelete = employees.find((e) => e.id === empId);
+    if (empToDelete?.systemRole === 'admin' && employees.filter((e) => e.systemRole === 'admin').length <= 1) {
+      showToast('Tidak dapat menghapus satu-satunya akun Administrator sistem.', 'error');
+      return;
+    }
     const remaining = employees.filter((e) => e.id !== empId);
     setEmployees(remaining);
     if (currentEmployeeId === empId) {

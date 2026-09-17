@@ -1,6 +1,6 @@
 {
   "name": "Sistem Absensi Karyawan",
-  "description": "Aplikasi absensi online karyawan modern dengan verifikasi selfie kamera, validasi GPS lokasi kantor, input manual jam masuk & pulang, filter menu tanggal periode pada rekap laporan absensi, manajemen shift & cuti, serta fitur import/ekspor data karyawan via spreadsheet Excel (.xls/.xlsx).",
+  "description": "Aplikasi absensi online karyawan modern dengan role Administrator & Karyawan, verifikasi selfie kamera, validasi GPS lokasi kantor, input manual jam masuk & pulang, persetujuan cuti tim, filter periode rekap absensi, serta fitur import/ekspor data karyawan via spreadsheet Excel.",
   "requestFramePermissions": ["camera", "geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

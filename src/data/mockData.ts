@@ -21,6 +21,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     phone: '+62 812-3456-7890',
     department: 'Teknologi & Informasi',
     role: 'Senior Software Engineer',
+    systemRole: 'admin',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     shift: {
       id: 'shift-1',
@@ -39,6 +40,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     phone: '+62 813-9876-5432',
     department: 'Human Resources (HRD)',
     role: 'HR Talent & Operations',
+    systemRole: 'admin',
     avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
     shift: {
       id: 'shift-1',
@@ -57,6 +59,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     phone: '+62 811-2233-4455',
     department: 'Pemasaran & Bisnis',
     role: 'Digital Marketing Lead',
+    systemRole: 'karyawan',
     avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     shift: {
       id: 'shift-1',
@@ -75,6 +78,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     phone: '+62 815-5566-7788',
     department: 'Keuangan & Akuntansi',
     role: 'Senior Finance Specialist',
+    systemRole: 'karyawan',
     avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
     shift: {
       id: 'shift-1',
@@ -93,6 +97,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     phone: '+62 819-0123-4567',
     department: 'Operasional & Logistik',
     role: 'Operations Supervisor',
+    systemRole: 'karyawan',
     avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
     shift: {
       id: 'shift-1',
