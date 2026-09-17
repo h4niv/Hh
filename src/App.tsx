@@ -239,6 +239,146 @@ export default function App() {
     showToast('Permohonan cuti/izin berhasil dikirim dan menunggu persetujuan HRD.');
   };
 
+  // Helper to get dates in range
+  const getDatesInRange = (startStr: string, endStr: string): string[] => {
+    const dates: string[] = [];
+    const curr = new Date(startStr);
+    const end = new Date(endStr);
+    while (curr <= end && !isNaN(curr.getTime())) {
+      dates.push(curr.toISOString().slice(0, 10));
+      curr.setDate(curr.getDate() + 1);
+    }
+    if (dates.length === 0 && startStr) {
+      dates.push(startStr);
+    }
+    return dates;
+  };
+
+  // Sync all approved leave requests into attendance records on load / change
+  useEffect(() => {
+    setAttendanceRecords(prev => {
+      let updated = [...prev];
+      let hasChanges = false;
+
+      for (const req of leaveRequests) {
+        if (req.status !== 'Disetujui') continue;
+        const dates = getDatesInRange(req.startDate, req.endDate);
+
+        for (const d of dates) {
+          const existingIdx = updated.findIndex(r => r.employeeId === req.employeeId && r.date === d);
+
+          if (req.type === 'Izin Datang Terlambat' || req.type === 'Izin Pulang Awal') {
+            const noteText = req.type === 'Izin Datang Terlambat'
+              ? `[Izin Terlambat Disetujui: Tiba ${req.estimatedArrivalTime || '-'}, ${req.lateMinutes || 0} mnt]`
+              : `[Izin Pulang Awal Disetujui: Pulang ${req.estimatedDepartureTime || '-'}, Awal ${req.earlyDepartureMinutes || 0} mnt]`;
+
+            if (existingIdx >= 0) {
+              const rec = updated[existingIdx];
+              const needsLate = req.type === 'Izin Datang Terlambat' && !rec.hasLatePermit;
+              const needsEarly = req.type === 'Izin Pulang Awal' && !rec.hasEarlyPermit;
+              const needsNote = !rec.notes || !rec.notes.includes(noteText);
+
+              if (needsLate || needsEarly || needsNote) {
+                hasChanges = true;
+                updated[existingIdx] = {
+                  ...rec,
+                  hasLatePermit: req.type === 'Izin Datang Terlambat' ? true : rec.hasLatePermit,
+                  hasEarlyPermit: req.type === 'Izin Pulang Awal' ? true : rec.hasEarlyPermit,
+                  lateMinutes: req.type === 'Izin Datang Terlambat' ? (rec.lateMinutes || req.lateMinutes) : rec.lateMinutes,
+                  earlyMinutes: req.type === 'Izin Pulang Awal' ? (rec.earlyMinutes || req.earlyDepartureMinutes) : rec.earlyMinutes,
+                  notes: rec.notes ? (rec.notes.includes(noteText) ? rec.notes : `${rec.notes} • ${noteText}`) : noteText,
+                };
+              }
+            } else {
+              hasChanges = true;
+              updated.unshift({
+                id: `att-permit-${req.id}-${d}`,
+                employeeId: req.employeeId,
+                employeeName: req.employeeName,
+                employeeNik: req.employeeNik,
+                department: req.department,
+                date: d,
+                type: 'WFO',
+                checkInTime: req.type === 'Izin Datang Terlambat' ? (req.estimatedArrivalTime ? `${req.estimatedArrivalTime}:00` : '09:30:00') : '08:30:00',
+                checkOutTime: '17:30:00',
+                status: 'Hadir Tepat Waktu',
+                hasLatePermit: req.type === 'Izin Datang Terlambat',
+                hasEarlyPermit: req.type === 'Izin Pulang Awal',
+                lateMinutes: req.type === 'Izin Datang Terlambat' ? (req.lateMinutes || 0) : 0,
+                earlyMinutes: req.type === 'Izin Pulang Awal' ? (req.earlyDepartureMinutes || 0) : 0,
+                notes: noteText,
+              });
+            }
+          } else if (req.type === 'Izin Dinas Luar') {
+            const dinasNote = `[Tugas Dinas Luar Disetujui] ${req.reason}`;
+            if (existingIdx >= 0) {
+              const rec = updated[existingIdx];
+              if (rec.type !== 'Dinas Luar' || !rec.notes || !rec.notes.includes(dinasNote)) {
+                hasChanges = true;
+                updated[existingIdx] = {
+                  ...rec,
+                  type: 'Dinas Luar',
+                  status: 'Hadir Tepat Waktu',
+                  notes: rec.notes ? (rec.notes.includes(dinasNote) ? rec.notes : `${rec.notes} • ${dinasNote}`) : dinasNote,
+                };
+              }
+            } else {
+              hasChanges = true;
+              updated.unshift({
+                id: `att-dinas-${req.id}-${d}`,
+                employeeId: req.employeeId,
+                employeeName: req.employeeName,
+                employeeNik: req.employeeNik,
+                department: req.department,
+                date: d,
+                type: 'Dinas Luar',
+                checkInTime: '08:30:00',
+                checkOutTime: '17:30:00',
+                status: 'Hadir Tepat Waktu',
+                notes: dinasNote,
+                isManualEntry: true,
+              });
+            }
+          } else {
+            const attendanceStatus: AttendanceStatus = req.type === 'Sakit' ? 'Sakit' : 'Izin';
+            const leaveNote = `Pengajuan ${req.type} Disetujui: ${req.reason}`;
+
+            if (existingIdx >= 0) {
+              const rec = updated[existingIdx];
+              if (rec.status !== attendanceStatus || !rec.notes || !rec.notes.includes(leaveNote)) {
+                hasChanges = true;
+                updated[existingIdx] = {
+                  ...rec,
+                  status: attendanceStatus,
+                  checkInTime: null,
+                  checkOutTime: null,
+                  notes: rec.notes ? (rec.notes.includes(leaveNote) ? rec.notes : `${rec.notes} • ${leaveNote}`) : leaveNote,
+                };
+              }
+            } else {
+              hasChanges = true;
+              updated.unshift({
+                id: `att-leave-${req.id}-${d}`,
+                employeeId: req.employeeId,
+                employeeName: req.employeeName,
+                employeeNik: req.employeeNik,
+                department: req.department,
+                date: d,
+                type: 'WFH',
+                checkInTime: null,
+                checkOutTime: null,
+                status: attendanceStatus,
+                notes: leaveNote,
+              });
+            }
+          }
+        }
+      }
+
+      return hasChanges ? updated : prev;
+    });
+  }, [leaveRequests]);
+
   // Handle Leave Status Update (Approve / Reject)
   const handleUpdateLeaveStatus = (requestId: string, newStatus: 'Disetujui' | 'Ditolak') => {
     const targetReq = leaveRequests.find((r) => r.id === requestId);
@@ -272,80 +412,7 @@ export default function App() {
       })
     );
 
-    // If approved for today, and it's a full-day leave (Cuti, Sakit, Izin Pribadi), record as Izin/Sakit attendance
-    if (newStatus === 'Disetujui' && targetReq.startDate <= todayStr && targetReq.endDate >= todayStr) {
-      if (targetReq.type === 'Izin Datang Terlambat' || targetReq.type === 'Izin Pulang Awal') {
-        // For partial-day permits (late arrival or early departure), append note to attendance record
-        setAttendanceRecords((prev) =>
-          prev.map((rec) => {
-            if (rec.employeeId === targetReq.employeeId && rec.date === targetReq.startDate) {
-              const noteText = targetReq.type === 'Izin Datang Terlambat'
-                ? `[Izin Terlambat Disetujui: Tiba ${targetReq.estimatedArrivalTime || '-'}, ${targetReq.lateMinutes || 0} mnt]`
-                : `[Izin Pulang Awal Disetujui: Pulang ${targetReq.estimatedDepartureTime || '-'}, Awal ${targetReq.earlyDepartureMinutes || 0} mnt]`;
-              return {
-                ...rec,
-                hasLatePermit: targetReq.type === 'Izin Datang Terlambat' ? true : rec.hasLatePermit,
-                hasEarlyPermit: targetReq.type === 'Izin Pulang Awal' ? true : rec.hasEarlyPermit,
-                lateMinutes: targetReq.type === 'Izin Datang Terlambat' ? (rec.lateMinutes || targetReq.lateMinutes) : rec.lateMinutes,
-                earlyMinutes: targetReq.type === 'Izin Pulang Awal' ? (rec.earlyMinutes || targetReq.earlyDepartureMinutes) : rec.earlyMinutes,
-                notes: rec.notes ? `${rec.notes} • ${noteText}` : noteText,
-              };
-            }
-            return rec;
-          })
-        );
-      } else if (targetReq.type === 'Izin Dinas Luar') {
-        const dinasAttendance: AttendanceRecord = {
-          id: `att-dinas-${Date.now()}`,
-          employeeId: targetReq.employeeId,
-          employeeName: targetReq.employeeName,
-          employeeNik: targetReq.employeeNik,
-          department: targetReq.department,
-          date: todayStr,
-          type: 'Dinas Luar',
-          checkInTime: '08:30:00',
-          checkOutTime: '17:30:00',
-          status: 'Hadir Tepat Waktu',
-          location: {
-            latitude: -6.2088,
-            longitude: 106.8456,
-            accuracy: 10,
-            address: `Dinas Luar: ${targetReq.reason}`,
-            distanceToOfficeMeters: 0,
-            isWithinRadius: true,
-          },
-          notes: `[Tugas Dinas Luar Disetujui] ${targetReq.reason}`,
-          isManualEntry: true,
-          recordedBy: currentEmployee ? `${currentEmployee.name} (${currentEmployee.systemRole})` : 'HRD',
-        };
-
-        setAttendanceRecords((prev) => [
-          dinasAttendance,
-          ...prev.filter(r => !(r.employeeId === targetReq.employeeId && r.date === todayStr))
-        ]);
-      } else {
-        const attendanceStatus: AttendanceStatus = targetReq.type === 'Sakit' ? 'Sakit' : 'Izin';
-        const leaveAttendance: AttendanceRecord = {
-          id: `att-leave-${Date.now()}`,
-          employeeId: targetReq.employeeId,
-          employeeName: targetReq.employeeName,
-          employeeNik: targetReq.employeeNik,
-          department: targetReq.department,
-          date: todayStr,
-          type: 'WFH',
-          checkInTime: null,
-          checkOutTime: null,
-          status: attendanceStatus,
-          notes: `Pengajuan ${targetReq.type}: ${targetReq.reason}`,
-        };
-
-        setAttendanceRecords((prev) => [
-          leaveAttendance,
-          ...prev.filter(r => !(r.employeeId === targetReq.employeeId && r.date === todayStr))
-        ]);
-      }
-    }
-
+    // If approved, sync across date range (handled automatically by useEffect on leaveRequests, but we can also ensure immediate update)
     showToast(`Pengajuan ${targetReq.employeeName} telah ${newStatus.toLowerCase()}!`, newStatus === 'Disetujui' ? 'success' : 'info');
   };
 
