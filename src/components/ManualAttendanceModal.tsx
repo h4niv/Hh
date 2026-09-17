@@ -15,7 +15,8 @@ import {
   CheckSquare,
   Square,
   Search,
-  ShieldCheck
+  ShieldCheck,
+  UserX
 } from 'lucide-react';
 import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee } from '../types';
 
@@ -26,6 +27,7 @@ interface ManualAttendanceModalProps {
   initialEmployeeId?: string;
   initialRecord?: AttendanceRecord | null;
   currentEmployee?: Employee;
+  existingRecords?: AttendanceRecord[];
   onSave: (record: AttendanceRecord, isNew: boolean) => void;
   onSaveBulk?: (records: AttendanceRecord[], message: string) => void;
 }
@@ -33,6 +35,8 @@ interface ManualAttendanceModalProps {
 const QUICK_REASONS = [
   'Lupa melakukan presensi',
   'Kendala sinyal / GPS perangkat',
+  'Tidak hadir tanpa keterangan (Alpha)',
+  'Mangkir / tidak ada konfirmasi (Alpha)',
   'Meeting mendadak di luar kantor',
   'Dinas luar kota sejak pagi',
   'Perangkat HP tertinggal / rusak',
@@ -46,6 +50,7 @@ export default function ManualAttendanceModal({
   initialEmployeeId,
   initialRecord,
   currentEmployee,
+  existingRecords,
   onSave,
   onSaveBulk,
 }: ManualAttendanceModalProps) {
@@ -141,6 +146,17 @@ export default function ManualAttendanceModal({
       return matchDept && matchSearch;
     });
   }, [employees, bulkDeptFilter, bulkSearchQuery]);
+
+  // Employees who have not yet recorded attendance on the selected date
+  const unrecordedEmployees = useMemo(() => {
+    if (!existingRecords) return [];
+    const recordedEmpIds = new Set(
+      existingRecords
+        .filter((r) => r.date === date)
+        .map((r) => r.employeeId)
+    );
+    return employees.filter((e) => !recordedEmpIds.has(e.id));
+  }, [existingRecords, employees, date]);
 
   const handleToggleBulkEmp = (empId: string) => {
     setSelectedBulkEmpIds((prev) =>
@@ -424,20 +440,34 @@ export default function ManualAttendanceModal({
           {/* BULK MODE: Pilih Semua / Checklist Karyawan */}
           {inputMode === 'bulk' && !isEditing && (
             <div className="space-y-2 p-3.5 rounded-xl bg-blue-50/40 border border-blue-100">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                   <Users className="w-4 h-4 text-blue-600" />
                   <span>Target Karyawan ({selectedBulkEmpIds.length} dari {employees.length} dipilih)</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleSelectAllBulkVisible}
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
-                >
-                  {filteredBulkEmployees.every((e) => selectedBulkEmpIds.includes(e.id))
-                    ? 'Batal Pilih Semua'
-                    : 'Pilih Semua'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {unrecordedEmployees.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBulkEmpIds(unrecordedEmployees.map((e) => e.id));
+                      }}
+                      className="text-[11px] font-semibold text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-lg border border-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                      title="Pilih hanya karyawan yang belum tercatat presensinya pada tanggal ini"
+                    >
+                      <span>Pilih Belum Absen ({unrecordedEmployees.length})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSelectAllBulkVisible}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+                  >
+                    {filteredBulkEmployees.every((e) => selectedBulkEmpIds.includes(e.id))
+                      ? 'Batal Pilih Semua'
+                      : 'Pilih Semua'}
+                  </button>
+                </div>
               </div>
 
               {/* Sub filters */}
@@ -634,6 +664,18 @@ export default function ManualAttendanceModal({
                   onClick={() => {
                     setStatus(st);
                     setIsStatusManuallyOverridden(true);
+                    if (st === 'Alpha') {
+                      setHasNoCheckIn(true);
+                      setHasNoCheckOut(true);
+                      setCheckInTime('');
+                      setCheckOutTime('');
+                      if (!notes || notes === 'Lupa melakukan presensi') {
+                        setNotes('Tidak hadir tanpa konfirmasi / keterangan (Alpha manual)');
+                      }
+                    } else if (st === 'Izin' || st === 'Sakit') {
+                      setHasNoCheckIn(true);
+                      setHasNoCheckOut(true);
+                    }
                   }}
                   className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition-all text-center cursor-pointer ${
                     status === st
@@ -642,7 +684,7 @@ export default function ManualAttendanceModal({
                         : st === 'Terlambat'
                         ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                         : st === 'Alpha'
-                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs ring-2 ring-rose-500/20'
                         : 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
@@ -651,6 +693,21 @@ export default function ManualAttendanceModal({
                 </button>
               ))}
             </div>
+
+            {/* Special Notice for Alpha Status */}
+            {status === 'Alpha' && (
+              <div className="p-3 rounded-xl bg-rose-50/90 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
+                <UserX className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-xs block text-rose-950">
+                    Penetapan Status Alpha oleh Admin / Superadmin
+                  </span>
+                  <p className="text-[11px] text-rose-800 leading-relaxed">
+                    User yang belum absen tidak dihitung Alpha secara otomatis oleh sistem. Status Alpha hanya tercatat dan dihitung ke statistik ketidakhadiran setelah Admin/Superadmin menyimpannya secara manual.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Catatan / Alasan */}

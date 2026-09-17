@@ -127,6 +127,9 @@ export default function App() {
     return employees.find((e) => e.id === currentEmployeeId) || employees[0];
   }, [employees, currentEmployeeId]);
 
+  // Admin or Superadmin role check
+  const isAdminOrSuperadmin = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
+
   // Today's date
   const todayStr = getTodayDateString();
 
@@ -517,6 +520,8 @@ export default function App() {
               employees={employees} 
               todayRecords={todayRecords} 
               onNavigateToEmployees={() => setActiveTab('karyawan')}
+              onOpenManualAttendance={() => handleOpenManualAttendance()}
+              isAdmin={isAdminOrSuperadmin}
             />
 
             {/* Core Clock In / Clock Out Card for Current Employee */}
@@ -766,7 +771,19 @@ export default function App() {
         currentEmployee={currentEmployee}
         initialEmployeeId={currentEmployee.id}
         initialRecord={editingAttendanceRecord}
+        existingRecords={attendanceRecords}
         onSave={handleSaveManualAttendance}
+        onSaveBulk={(records, message) => {
+          setAttendanceRecords((prev) => {
+            const map = new Map<string, AttendanceRecord>();
+            prev.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+            records.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+            return Array.from(map.values()).sort((a, b) => 
+              (b.date + (b.checkInTime || '')).localeCompare(a.date + (a.checkInTime || ''))
+            );
+          });
+          showToast(message, 'success');
+        }}
       />
 
       {/* Auto Attendance Generation Modal (Admin & Superadmin) */}
