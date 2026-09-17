@@ -50,6 +50,7 @@ export default function LeaveManagement({
   };
 
   const totalDays = calculateDays(startDate, endDate);
+  const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -206,24 +207,30 @@ export default function LeaveManagement({
                       {/* Action buttons for HR approval simulation */}
                       <td className="px-4 py-3 whitespace-nowrap text-right">
                         {isPending ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => onUpdateStatus(req.id, 'Disetujui')}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                              title="Setujui permohonan"
-                            >
-                              <Check className="w-3 h-3" /> Setujui
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onUpdateStatus(req.id, 'Ditolak')}
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-100 hover:text-rose-700 text-slate-600 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                              title="Tolak permohonan"
-                            >
-                              <X className="w-3 h-3" /> Tolak
-                            </button>
-                          </div>
+                          isAdminOrSuper ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => onUpdateStatus(req.id, 'Disetujui')}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                title="Setujui permohonan"
+                              >
+                                <Check className="w-3 h-3" /> Setujui
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onUpdateStatus(req.id, 'Ditolak')}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-100 hover:text-rose-700 text-slate-600 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Tolak permohonan"
+                              >
+                                <X className="w-3 h-3" /> Tolak
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-amber-600 font-medium italic">
+                              Menunggu Review Admin
+                            </span>
+                          )
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">
                             Selesai diproses

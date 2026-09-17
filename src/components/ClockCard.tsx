@@ -10,7 +10,9 @@ import {
   CalendarCheck,
   Building,
   User,
-  Coffee
+  Coffee,
+  Zap,
+  Users
 } from 'lucide-react';
 import { Employee, AttendanceRecord, OfficeConfig } from '../types';
 
@@ -20,6 +22,7 @@ interface ClockCardProps {
   officeConfig: OfficeConfig;
   onOpenAttendanceModal: (mode: 'in' | 'out') => void;
   onOpenManualAttendanceModal?: () => void;
+  onOpenAutoAttendanceModal?: () => void;
   userDistanceToOffice: number | null;
   isWithinOfficeRadius: boolean;
 }
@@ -30,9 +33,12 @@ export default function ClockCard({
   officeConfig,
   onOpenAttendanceModal,
   onOpenManualAttendanceModal,
+  onOpenAutoAttendanceModal,
   userDistanceToOffice,
   isWithinOfficeRadius,
 }: ClockCardProps) {
+  const isAdminOrSuper = employee.systemRole === 'admin' || employee.systemRole === 'superadmin';
+  const isSuperadmin = employee.systemRole === 'superadmin';
   const [workingDuration, setWorkingDuration] = useState<string>('0 jam 0 mnt');
 
   // Compute live duration if checked in and not checked out
@@ -189,21 +195,45 @@ export default function ClockCard({
               </button>
             </div>
 
-            {/* Manual Attendance Shortcut Link */}
-            {onOpenManualAttendanceModal && (
-              <div className="flex items-center justify-between px-1 py-1 text-xs">
-                <span className="text-slate-500">Lupa absen atau perlu input manual?</span>
-                <button
-                  type="button"
-                  id="btn-open-manual-clock-card"
-                  onClick={onOpenManualAttendanceModal}
-                  className="inline-flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>{hasCheckedIn ? 'Edit / Koreksi Jam Presensi' : 'Input Jam Masuk & Pulang Manual'}</span>
-                </button>
+            {/* Quick Actions for Manual & Auto Attendance */}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <span className="text-slate-600 font-medium">
+                  {isAdminOrSuper ? 'Panel Akses Presensi Otoritas:' : 'Lupa absen atau perlu input manual?'}
+                </span>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  {isAdminOrSuper && onOpenAutoAttendanceModal && (
+                    <button
+                      type="button"
+                      id="btn-clockcard-auto-attendance"
+                      onClick={onOpenAutoAttendanceModal}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[11px] bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
+                      title="Absensi otomatis semua user"
+                    >
+                      <Zap className="w-3 h-3 fill-indigo-600 text-indigo-600" />
+                      <span>⚡ Absensi Otomatis</span>
+                    </button>
+                  )}
+
+                  {onOpenManualAttendanceModal && (
+                    <button
+                      type="button"
+                      id="btn-open-manual-clock-card"
+                      onClick={onOpenManualAttendanceModal}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold text-[11px] bg-white text-blue-700 hover:bg-blue-50 border border-slate-200 transition-colors cursor-pointer"
+                    >
+                      <Clock className="w-3 h-3 text-blue-600" />
+                      <span>
+                        {isAdminOrSuper 
+                          ? '+ Input Manual User' 
+                          : (hasCheckedIn ? 'Koreksi Presensi' : 'Input Manual')}
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
 
             {/* Attendance Details of the Day if already clocked in */}
             {hasCheckedIn && todayRecord && (

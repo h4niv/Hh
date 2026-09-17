@@ -24,7 +24,8 @@ import {
   ShieldCheck,
   ShieldAlert,
   User,
-  Shield
+  Shield,
+  Crown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Employee, ShiftInfo, SystemRole } from '../types';
@@ -94,7 +95,7 @@ export default function EmployeeManagement({
   const [leaveQuota, setLeaveQuota] = useState(12);
 
   // Filters
-  const [selectedRole, setSelectedRole] = useState<'all' | 'admin' | 'karyawan'>('all');
+  const [selectedRole, setSelectedRole] = useState<'all' | 'superadmin' | 'admin' | 'karyawan'>('all');
 
   // Form error message
   const [formError, setFormError] = useState<string | null>(null);
@@ -159,24 +160,27 @@ export default function EmployeeManagement({
     }
   };
 
-  // Quick toggle role directly from table
+  // Quick toggle role directly from table (karyawan -> admin -> superadmin -> karyawan)
   const handleToggleRole = (emp: Employee) => {
-    if (emp.systemRole === 'admin') {
-      const adminCount = employees.filter((e) => e.systemRole === 'admin').length;
-      if (adminCount <= 1) {
-        alert('Sistem harus memiliki minimal satu Administrator aktif.');
+    let nextRole: SystemRole = 'karyawan';
+    if (emp.systemRole === 'karyawan') {
+      nextRole = 'admin';
+    } else if (emp.systemRole === 'admin') {
+      nextRole = 'superadmin';
+    } else {
+      // Current is superadmin, moving to karyawan
+      const superAdminCount = employees.filter((e) => e.systemRole === 'superadmin').length;
+      if (superAdminCount <= 1) {
+        alert('Sistem harus memiliki minimal satu Superadministrator aktif.');
         return;
       }
-      onEditEmployee({
-        ...emp,
-        systemRole: 'karyawan',
-      });
-    } else {
-      onEditEmployee({
-        ...emp,
-        systemRole: 'admin',
-      });
+      nextRole = 'karyawan';
     }
+
+    onEditEmployee({
+      ...emp,
+      systemRole: nextRole,
+    });
   };
 
   // Handle Photo Upload
@@ -290,8 +294,7 @@ export default function EmployeeManagement({
         selectedDepartment === 'all' || emp.department === selectedDepartment;
 
       const matchRole =
-        selectedRole === 'all' ||
-        (selectedRole === 'admin' ? emp.systemRole === 'admin' : emp.systemRole !== 'admin');
+        selectedRole === 'all' || emp.systemRole === selectedRole;
 
       return matchSearch && matchDept && matchRole;
     });
@@ -303,7 +306,7 @@ export default function EmployeeManagement({
       'No': idx + 1,
       'NIK': emp.nik,
       'Nama Lengkap': emp.name,
-      'Role Akses': emp.systemRole === 'admin' ? 'Administrator' : 'Karyawan',
+      'Role Akses': emp.systemRole === 'superadmin' ? 'Superadministrator' : emp.systemRole === 'admin' ? 'Administrator' : 'Karyawan',
       'Email': emp.email,
       'No Telepon': emp.phone,
       'Departemen': emp.department,
@@ -335,13 +338,15 @@ export default function EmployeeManagement({
     XLSX.writeFile(workbook, `Data_Karyawan_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  const isSuperadmin = currentEmployee.systemRole === 'superadmin';
   const isAdmin = currentEmployee.systemRole === 'admin';
+  const isAdminOrSuper = isSuperadmin || isAdmin;
 
   return (
     <div className="space-y-6" id="employee-management-view">
       
       {/* Role Alert Banner if logged in as regular employee */}
-      {!isAdmin && (
+      {!isAdminOrSuper && (
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
           <div className="flex items-start gap-2.5">
             <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -412,11 +417,20 @@ export default function EmployeeManagement({
           </div>
         </div>
 
-        {/* Quick Stats Summary with Administrator Breakdown */}
+        {/* Quick Stats Summary with Superadmin & Administrator Breakdown */}
         <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-medium text-slate-500">Total Karyawan</span>
             <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">{employees.length} Orang</div>
+          </div>
+          <div className="p-3 bg-purple-50/80 rounded-xl border border-purple-100">
+            <span className="text-[11px] font-bold text-purple-700 flex items-center gap-1">
+              <Crown className="w-3.5 h-3.5 text-purple-600" />
+              Superadmin
+            </span>
+            <div className="text-lg sm:text-xl font-bold text-purple-900 mt-0.5">
+              {employees.filter((e) => e.systemRole === 'superadmin').length} Orang
+            </div>
           </div>
           <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100">
             <span className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
@@ -430,20 +444,12 @@ export default function EmployeeManagement({
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-medium text-slate-500">Karyawan Biasa</span>
             <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">
-              {employees.filter((e) => e.systemRole !== 'admin').length} Orang
+              {employees.filter((e) => e.systemRole === 'karyawan').length} Orang
             </div>
           </div>
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-medium text-slate-500">Departemen</span>
             <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">{departments.length} Divisi</div>
-          </div>
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-            <span className="text-[11px] font-medium text-slate-500">Rata-rata Cuti</span>
-            <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">
-              {employees.length > 0 
-                ? (employees.reduce((acc, e) => acc + e.remainingLeaveQuota, 0) / employees.length).toFixed(1)
-                : 0} Hari
-            </div>
           </div>
         </div>
       </div>
@@ -476,12 +482,13 @@ export default function EmployeeManagement({
             <Shield className="w-4 h-4 text-indigo-500 shrink-0" />
             <select
               value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value as 'all' | 'admin' | 'karyawan')}
-              className="w-full sm:w-44 py-2 px-3 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+              onChange={(e) => setSelectedRole(e.target.value as 'all' | 'superadmin' | 'admin' | 'karyawan')}
+              className="w-full sm:w-48 py-2 px-3 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
             >
               <option value="all">Semua Role ({employees.length})</option>
+              <option value="superadmin">👑 Superadmin ({employees.filter(e => e.systemRole === 'superadmin').length})</option>
               <option value="admin">🛡️ Administrator ({employees.filter(e => e.systemRole === 'admin').length})</option>
-              <option value="karyawan">👤 Karyawan ({employees.filter(e => e.systemRole !== 'admin').length})</option>
+              <option value="karyawan">👤 Karyawan ({employees.filter(e => e.systemRole === 'karyawan').length})</option>
             </select>
           </div>
 
@@ -568,7 +575,12 @@ export default function EmployeeManagement({
                         <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
                           {emp.nik}
                         </span>
-                        {emp.systemRole === 'admin' ? (
+                        {emp.systemRole === 'superadmin' ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
+                            <Crown className="w-3 h-3 text-purple-600" />
+                            Superadmin
+                          </span>
+                        ) : emp.systemRole === 'admin' ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
                             <ShieldCheck className="w-3 h-3 text-indigo-600" />
                             Administrator
@@ -663,15 +675,21 @@ export default function EmployeeManagement({
                       type="button"
                       onClick={() => handleToggleRole(emp)}
                       className={`px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 border cursor-pointer ${
-                        emp.systemRole === 'admin'
+                        emp.systemRole === 'superadmin'
+                          ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
+                          : emp.systemRole === 'admin'
                           ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
                           : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                       }`}
-                      title={emp.systemRole === 'admin' ? 'Ubah menjadi Karyawan Biasa' : 'Jadikan Administrator'}
+                      title={`Role saat ini: ${emp.systemRole}. Klik untuk beralih role (Karyawan -> Admin -> Superadmin)`}
                     >
-                      <ShieldCheck className={`w-3.5 h-3.5 ${emp.systemRole === 'admin' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                      {emp.systemRole === 'superadmin' ? (
+                        <Crown className="w-3.5 h-3.5 text-purple-600" />
+                      ) : (
+                        <ShieldCheck className={`w-3.5 h-3.5 ${emp.systemRole === 'admin' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                      )}
                       <span className="hidden sm:inline">
-                        {emp.systemRole === 'admin' ? 'Role: Admin' : 'Set Admin'}
+                        {emp.systemRole === 'superadmin' ? 'Superadmin' : emp.systemRole === 'admin' ? 'Admin' : 'Karyawan'}
                       </span>
                     </button>
 
@@ -907,37 +925,39 @@ export default function EmployeeManagement({
                 <label className="block text-xs font-semibold text-slate-700">
                   Role Akses Sistem Presensi <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Option 1: Superadmin */}
                   <div
-                    onClick={() => setSystemRole('karyawan')}
-                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                      systemRole === 'karyawan'
-                        ? 'border-blue-600 bg-blue-50/50'
+                    onClick={() => setSystemRole('superadmin')}
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-2.5 ${
+                      systemRole === 'superadmin'
+                        ? 'border-purple-600 bg-purple-50/50'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
                   >
                     <input
                       type="radio"
-                      id="role-karyawan"
+                      id="role-superadmin"
                       name="systemRoleInput"
-                      checked={systemRole === 'karyawan'}
-                      onChange={() => setSystemRole('karyawan')}
-                      className="mt-0.5 text-blue-600"
+                      checked={systemRole === 'superadmin'}
+                      onChange={() => setSystemRole('superadmin')}
+                      className="mt-0.5 text-purple-600 cursor-pointer"
                     />
                     <div>
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                        <User className="w-3.5 h-3.5 text-slate-500" />
-                        Karyawan Biasa
+                      <div className="flex items-center gap-1 text-xs font-bold text-purple-950">
+                        <Crown className="w-3.5 h-3.5 text-purple-600" />
+                        Superadmin
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Presensi mandiri (selfie & GPS), pengajuan izin/cuti sendiri, serta rekap riwayat pribadi.
+                      <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                        Akses tertinggi: input manual & otomatis semua user, izin cuti, kelola admin, & setting GPS kantor.
                       </p>
                     </div>
                   </div>
 
+                  {/* Option 2: Admin */}
                   <div
                     onClick={() => setSystemRole('admin')}
-                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-2.5 ${
                       systemRole === 'admin'
                         ? 'border-indigo-600 bg-indigo-50/50'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
@@ -949,15 +969,43 @@ export default function EmployeeManagement({
                       name="systemRoleInput"
                       checked={systemRole === 'admin'}
                       onChange={() => setSystemRole('admin')}
-                      className="mt-0.5 text-indigo-600"
+                      className="mt-0.5 text-indigo-600 cursor-pointer"
                     />
                     <div>
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
+                      <div className="flex items-center gap-1 text-xs font-bold text-indigo-950">
                         <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-                        Administrator Sistem
+                        Administrator
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Hak akses penuh: persetujuan cuti tim, kelola master karyawan & shift, input manual, dan koordinat kantor.
+                      <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                        Akses manajerial: input manual & otomatis semua user, persetujuan cuti tim, dan kelola karyawan & shift.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Option 3: Karyawan */}
+                  <div
+                    onClick={() => setSystemRole('karyawan')}
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-2.5 ${
+                      systemRole === 'karyawan'
+                        ? 'border-blue-600 bg-blue-50/50'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      id="role-karyawan"
+                      name="systemRoleInput"
+                      checked={systemRole === 'karyawan'}
+                      onChange={() => setSystemRole('karyawan')}
+                      className="mt-0.5 text-blue-600 cursor-pointer"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1 text-xs font-bold text-slate-900">
+                        <User className="w-3.5 h-3.5 text-slate-500" />
+                        Karyawan Biasa
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                        Presensi mandiri (selfie & GPS), pengajuan izin/cuti sendiri, serta rekap riwayat kehadiran personal.
                       </p>
                     </div>
                   </div>

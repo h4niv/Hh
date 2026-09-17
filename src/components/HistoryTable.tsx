@@ -19,9 +19,14 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
+  Zap,
   CalendarCheck,
   HeartPulse,
-  UserX
+  UserX,
+  Shield,
+  ShieldAlert,
+  CheckSquare,
+  AlertTriangle
 } from 'lucide-react';
 import { AttendanceRecord, Employee } from '../types';
 import { exportAttendanceToCSV } from '../utils/exportCsv';
@@ -40,24 +45,48 @@ interface HistoryTableProps {
   records: AttendanceRecord[];
   employees: Employee[];
   departments: string[];
+  currentEmployee: Employee;
   onOpenManualAttendanceModal?: () => void;
+  onOpenAutoAttendanceModal?: () => void;
   onEditAttendanceRecord?: (record: AttendanceRecord) => void;
   onDeleteAttendanceRecord?: (recordId: string) => void;
+  onDeleteMultipleAttendanceRecords?: (recordIds: string[]) => void;
+}
+
+interface DeleteConfirmState {
+  isOpen: boolean;
+  mode: 'single' | 'bulk' | 'filtered';
+  targetRecord?: AttendanceRecord;
+  targetIds?: string[];
+  count?: number;
+  title: string;
+  description: string;
 }
 
 export default function HistoryTable({ 
   records, 
   employees, 
   departments,
+  currentEmployee,
   onOpenManualAttendanceModal,
+  onOpenAutoAttendanceModal,
   onEditAttendanceRecord,
   onDeleteAttendanceRecord,
+  onDeleteMultipleAttendanceRecords,
 }: HistoryTableProps) {
+  const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
+  const isSuperadmin = currentEmployee.systemRole === 'superadmin';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState<string>('Semua');
   const [selectedStatus, setSelectedStatus] = useState<string>('Semua');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('Semua');
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
+
+  // Selection state for Admin Bulk Actions
+  const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
+
+  // In-app Delete Confirmation Modal state
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState | null>(null);
 
   // Date Period State
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('semua');
@@ -145,6 +174,116 @@ export default function HistoryTable({
     );
   };
 
+  // Selection logic for Admin & Superadmin Bulk Actions
+  const isAllFilteredSelected =
+    filteredRecords.length > 0 &&
+    filteredRecords.every((r) => selectedRecordIds.has(r.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllFilteredSelected) {
+      setSelectedRecordIds((prev) => {
+        const next = new Set(prev);
+        filteredRecords.forEach((r) => next.delete(r.id));
+        return next;
+      });
+    } else {
+      setSelectedRecordIds((prev) => {
+        const next = new Set(prev);
+        filteredRecords.forEach((r) => next.add(r.id));
+        return next;
+      });
+    }
+  };
+
+  const handleToggleSelectRecord = (id: string) => {
+    setSelectedRecordIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedRecordIds(new Set());
+  };
+
+  // Trigger Confirmation for Single Delete (Admin / Superadmin)
+  const handlePromptDeleteSingle = (record: AttendanceRecord) => {
+    setDeleteConfirm({
+      isOpen: true,
+      mode: 'single',
+      targetRecord: record,
+      title: `Hapus Data Presensi: ${record.employeeName}`,
+      description: `Apakah Anda yakin ingin menghapus catatan presensi ${record.employeeName} (${record.employeeNik}) tanggal ${formatShortIndonesianDate(record.date)}?`,
+    });
+  };
+
+  // Trigger Confirmation for Bulk Delete (Admin / Superadmin)
+  const handlePromptDeleteBulk = () => {
+    const count = selectedRecordIds.size;
+    if (count === 0) return;
+    setDeleteConfirm({
+      isOpen: true,
+      mode: 'bulk',
+      targetIds: Array.from(selectedRecordIds),
+      count,
+      title: `Hapus ${count} Data Presensi Terpilih`,
+      description: `Anda akan menghapus ${count} data presensi karyawan terpilih sekaligus dari sistem database.`,
+    });
+  };
+
+  // Trigger Confirmation for Filtered Delete (Admin / Superadmin)
+  const handlePromptDeleteFiltered = () => {
+    const count = filteredRecords.length;
+    if (count === 0) return;
+    const filterDesc =
+      selectedEmployeeId !== 'Semua'
+        ? `karyawan "${employees.find((e) => e.id === selectedEmployeeId)?.name || 'terpilih'}"`
+        : selectedDept !== 'Semua'
+        ? `divisi "${selectedDept}"`
+        : `periode "${getPeriodDisplayLabel(periodPreset, startDate, endDate)}"`;
+
+    setDeleteConfirm({
+      isOpen: true,
+      mode: 'filtered',
+      targetIds: filteredRecords.map((r) => r.id),
+      count,
+      title: `Hapus Semua Data Absensi (${count} data)`,
+      description: `Anda akan menghapus seluruh ${count} catatan presensi ${filterDesc}. Pastikan Anda telah mengunduh laporan CSV/Excel jika data ini masih dibutuhkan.`,
+    });
+  };
+
+  // Execute Deletion
+  const handleExecuteDeleteConfirm = () => {
+    if (!deleteConfirm) return;
+
+    if (deleteConfirm.mode === 'single' && deleteConfirm.targetRecord && onDeleteAttendanceRecord) {
+      onDeleteAttendanceRecord(deleteConfirm.targetRecord.id);
+      setSelectedRecordIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteConfirm.targetRecord!.id);
+        return next;
+      });
+    } else if (deleteConfirm.targetIds && deleteConfirm.targetIds.length > 0) {
+      if (onDeleteMultipleAttendanceRecords) {
+        onDeleteMultipleAttendanceRecords(deleteConfirm.targetIds);
+      } else if (onDeleteAttendanceRecord) {
+        deleteConfirm.targetIds.forEach((id) => onDeleteAttendanceRecord(id));
+      }
+      setSelectedRecordIds((prev) => {
+        const next = new Set(prev);
+        deleteConfirm.targetIds!.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+
+    setDeleteConfirm(null);
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden" id="attendance-history-section">
       {/* Table Header Controls */}
@@ -164,13 +303,29 @@ export default function HistoryTable({
 
           {/* Header Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {isAdminOrSuper && onOpenAutoAttendanceModal && (
+              <button
+                type="button"
+                id="btn-open-auto-attendance"
+                onClick={onOpenAutoAttendanceModal}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                title="Generate dan rekap presensi otomatis untuk seluruh user sekaligus"
+              >
+                <Zap className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
+                <span>⚡ Absensi Otomatis</span>
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-white/20 text-white">
+                  Semua User
+                </span>
+              </button>
+            )}
+
             {onOpenManualAttendanceModal && (
               <button
                 type="button"
                 id="btn-open-manual-attendance"
                 onClick={onOpenManualAttendanceModal}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                title="Input jam masuk dan jam pulang secara manual"
+                title={isAdminOrSuper ? "Input presensi manual untuk semua karyawan" : "Input presensi manual"}
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>+ Input Presensi Manual</span>
@@ -504,13 +659,85 @@ export default function HistoryTable({
             </select>
           </div>
         </div>
+
+        {/* Quick Admin Actions Row */}
+        {isAdminOrSuper && (
+          <div className="mt-3 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-1.5 text-slate-600 text-[11px]">
+              <Shield className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>
+                <strong>Akses Administrator</strong>: Anda berwenang mengedit dan menghapus data absensi semua user.
+              </span>
+            </div>
+
+            {filteredRecords.length > 0 && (
+              <button
+                type="button"
+                id="btn-delete-filtered-attendance"
+                onClick={handlePromptDeleteFiltered}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50/80 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                title="Hapus seluruh data presensi yang tampil pada filter saat ini"
+              >
+                <Trash2 className="w-3 h-3 text-rose-600" />
+                <span>Hapus Semua Hasil Filter ({filteredRecords.length} Data)</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Bulk Selection Action Bar for Admin/Superadmin */}
+      {isAdminOrSuper && selectedRecordIds.size > 0 && (
+        <div className="px-5 py-3 bg-rose-50/90 border-b border-rose-200 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-950 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-rose-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+              {selectedRecordIds.size}
+            </div>
+            <div>
+              <span className="font-bold text-rose-900">{selectedRecordIds.size} data absensi dipilih</span>
+              <span className="text-rose-700 ml-1.5 hidden sm:inline">• Akses Admin untuk menghapus data massal semua user</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              id="btn-cancel-select-attendance"
+              onClick={handleClearSelection}
+              className="px-3 py-1.5 rounded-lg bg-white border border-rose-200 hover:bg-rose-100/60 text-slate-700 font-medium transition-colors cursor-pointer"
+            >
+              Batal Pilihan
+            </button>
+            <button
+              type="button"
+              id="btn-bulk-delete-attendance"
+              onClick={handlePromptDeleteBulk}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-2xs transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus {selectedRecordIds.size} Data Terpilih</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Table Data */}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs text-slate-600 border-collapse" id="attendance-data-table">
           <thead className="bg-slate-50 text-slate-700 uppercase tracking-wider text-[11px] font-semibold border-b border-slate-200">
             <tr>
+              {isAdminOrSuper && (
+                <th className="w-10 px-3 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    id="checkbox-select-all-attendance"
+                    checked={isAllFilteredSelected}
+                    onChange={handleToggleSelectAll}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                    title={isAllFilteredSelected ? "Batal pilih semua" : "Pilih semua baris yang tampil"}
+                  />
+                </th>
+              )}
               <th className="px-4 py-3">Karyawan</th>
               <th className="px-4 py-3">Tanggal</th>
               <th className="px-4 py-3">Tipe</th>
@@ -526,7 +753,7 @@ export default function HistoryTable({
           <tbody className="divide-y divide-slate-100">
             {filteredRecords.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
+                <td colSpan={isAdminOrSuper ? 11 : 10} className="px-4 py-12 text-center text-slate-400">
                   <div className="max-w-md mx-auto space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
                       <Calendar className="w-6 h-6" />
@@ -571,19 +798,49 @@ export default function HistoryTable({
                 const isOnTime = record.status === 'Hadir Tepat Waktu';
                 const isLeave = record.status === 'Izin' || record.status === 'Sakit';
 
+                const isSelected = selectedRecordIds.has(record.id);
+
                 return (
-                  <tr key={record.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr 
+                    key={record.id} 
+                    className={`hover:bg-slate-50/70 transition-colors ${
+                      isSelected ? 'bg-rose-50/50' : ''
+                    }`}
+                  >
+                    {/* Admin Selection Checkbox */}
+                    {isAdminOrSuper && (
+                      <td className="w-10 px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          id={`checkbox-record-${record.id}`}
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectRecord(record.id)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                          title={`Pilih presensi ${record.employeeName}`}
+                        />
+                      </td>
+                    )}
+
                     {/* Employee Profile */}
                     <td className="px-4 py-3">
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-slate-900">{record.employeeName}</span>
+                          {record.isAutoGenerated && (
+                            <span 
+                              className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-0.5"
+                              title={record.recordedBy ? `Otomatis: ${record.recordedBy}` : 'Absensi otomatis sistem'}
+                            >
+                              <Zap className="w-2.5 h-2.5 fill-indigo-600 text-indigo-600" />
+                              Otomatis
+                            </span>
+                          )}
                           {record.isManualEntry && (
                             <span 
-                              className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200"
-                              title="Data presensi diinput / diedit secara manual"
+                              className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                              title={record.recordedBy ? `Manual oleh: ${record.recordedBy}` : 'Data presensi diinput / diedit manual'}
                             >
-                              Manual
+                              ✍️ Manual
                             </span>
                           )}
                         </div>
@@ -693,26 +950,30 @@ export default function HistoryTable({
                           <button
                             type="button"
                             onClick={() => onEditAttendanceRecord(record)}
-                            title="Edit jam masuk & pulang"
+                            title={isAdminOrSuper ? "Edit jam masuk & pulang (Akses Admin)" : "Koreksi jam presensi"}
                             className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         )}
 
-                        {onDeleteAttendanceRecord && (
+                        {isAdminOrSuper ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (window.confirm(`Hapus data presensi ${record.employeeName} tanggal ${record.date}?`)) {
-                                onDeleteAttendanceRecord(record.id);
-                              }
-                            }}
-                            title="Hapus data presensi"
+                            id={`btn-delete-record-${record.id}`}
+                            onClick={() => handlePromptDeleteSingle(record)}
+                            title={`Hapus data presensi ${record.employeeName} (Akses Admin)`}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                        ) : (
+                          <span 
+                            className="p-1.5 text-slate-300 cursor-not-allowed inline-block" 
+                            title="Hanya Admin & Superadmin yang dapat menghapus data absensi"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </span>
                         )}
                       </div>
                     </td>
@@ -755,6 +1016,86 @@ export default function HistoryTable({
             </div>
             <div className="p-3 text-center text-xs text-slate-500 bg-slate-50">
               Verifikasi Kehadiran Biometrik / Selfie Wajah
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Delete Confirmation Modal */}
+      {deleteConfirm && deleteConfirm.isOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-base font-bold text-slate-900">
+                    {deleteConfirm.title}
+                  </h3>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">
+                    Akses Admin
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {deleteConfirm.description}
+                </p>
+              </div>
+            </div>
+
+            {deleteConfirm.targetRecord && (
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Nama Karyawan:</span>
+                  <span className="font-semibold text-slate-800">{deleteConfirm.targetRecord.employeeName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">NIK & Divisi:</span>
+                  <span className="font-mono text-slate-700">{deleteConfirm.targetRecord.employeeNik} • {deleteConfirm.targetRecord.department}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Tanggal Absensi:</span>
+                  <span className="font-medium text-slate-800">{deleteConfirm.targetRecord.date}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Jam Presensi:</span>
+                  <span className="font-mono text-slate-800">
+                    {deleteConfirm.targetRecord.checkInTime ? `${deleteConfirm.targetRecord.checkInTime} WIB` : '-'} s/d {deleteConfirm.targetRecord.checkOutTime ? `${deleteConfirm.targetRecord.checkOutTime} WIB` : 'Belum Pulang'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>Peringatan: Data absensi yang dihapus tidak dapat dipulihkan. Rekapitulasi absensi dan statistik kehadiran akan otomatis diperbarui.</span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                id="btn-cancel-delete-modal"
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+              >
+                Batalkan
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-attendance"
+                onClick={handleExecuteDeleteConfirm}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-2xs transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Ya, Hapus Data Absensi</span>
+              </button>
             </div>
           </div>
         </div>

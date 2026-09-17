@@ -10,7 +10,12 @@ import {
   FileText, 
   ClockAlert,
   Edit3,
-  Briefcase
+  Briefcase,
+  Users,
+  CheckSquare,
+  Square,
+  Search,
+  ShieldCheck
 } from 'lucide-react';
 import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee } from '../types';
 
@@ -20,7 +25,9 @@ interface ManualAttendanceModalProps {
   employees: Employee[];
   initialEmployeeId?: string;
   initialRecord?: AttendanceRecord | null;
+  currentEmployee?: Employee;
   onSave: (record: AttendanceRecord, isNew: boolean) => void;
+  onSaveBulk?: (records: AttendanceRecord[], message: string) => void;
 }
 
 const QUICK_REASONS = [
@@ -38,14 +45,25 @@ export default function ManualAttendanceModal({
   employees,
   initialEmployeeId,
   initialRecord,
+  currentEmployee,
   onSave,
+  onSaveBulk,
 }: ManualAttendanceModalProps) {
   const isEditing = Boolean(initialRecord);
+
+  // Mode: 'single' (satu user) or 'bulk' (semua / banyak user)
+  const [inputMode, setInputMode] = useState<'single' | 'bulk'>('single');
 
   // Form states
   const [selectedEmpId, setSelectedEmpId] = useState<string>(
     initialRecord?.employeeId || initialEmployeeId || (employees[0]?.id || '')
   );
+  const [selectedBulkEmpIds, setSelectedBulkEmpIds] = useState<string[]>(() =>
+    employees.map((e) => e.id)
+  );
+  const [bulkDeptFilter, setBulkDeptFilter] = useState<string>('all');
+  const [bulkSearchQuery, setBulkSearchQuery] = useState<string>('');
+
   const [date, setDate] = useState<string>(
     initialRecord?.date || new Date().toISOString().slice(0, 10)
   );
@@ -75,9 +93,14 @@ export default function ManualAttendanceModal({
   );
   const [formError, setFormError] = useState<string | null>(null);
 
+  const departments = useMemo(() => {
+    return Array.from(new Set(employees.map((e) => e.department)));
+  }, [employees]);
+
   // Synchronize when initialRecord or initialEmployeeId changes
   useEffect(() => {
     if (initialRecord) {
+      setInputMode('single');
       setSelectedEmpId(initialRecord.employeeId);
       setDate(initialRecord.date);
       setAttendanceType(initialRecord.type);
@@ -90,6 +113,7 @@ export default function ManualAttendanceModal({
       setNotes(initialRecord.notes || '');
     } else {
       setSelectedEmpId(initialEmployeeId || (employees[0]?.id || ''));
+      setSelectedBulkEmpIds(employees.map((e) => e.id));
       setDate(new Date().toISOString().slice(0, 10));
       setAttendanceType('WFO');
       setCheckInTime('08:30');
@@ -102,18 +126,45 @@ export default function ManualAttendanceModal({
     }
   }, [initialRecord, initialEmployeeId, isOpen, employees]);
 
-  // Current selected employee object
+  // Current selected employee object in single mode
   const selectedEmployee = useMemo(() => {
     return employees.find((e) => e.id === selectedEmpId) || employees[0];
   }, [employees, selectedEmpId]);
 
-  // Auto calculate attendance status based on shift start time & late tolerance
+  // Filtered employees for bulk selection
+  const filteredBulkEmployees = useMemo(() => {
+    return employees.filter((emp) => {
+      const matchDept = bulkDeptFilter === 'all' || emp.department === bulkDeptFilter;
+      const matchSearch =
+        emp.name.toLowerCase().includes(bulkSearchQuery.toLowerCase()) ||
+        emp.nik.toLowerCase().includes(bulkSearchQuery.toLowerCase());
+      return matchDept && matchSearch;
+    });
+  }, [employees, bulkDeptFilter, bulkSearchQuery]);
+
+  const handleToggleBulkEmp = (empId: string) => {
+    setSelectedBulkEmpIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
+  };
+
+  const handleSelectAllBulkVisible = () => {
+    const visibleIds = filteredBulkEmployees.map((e) => e.id);
+    const allSelected = visibleIds.every((id) => selectedBulkEmpIds.includes(id));
+    if (allSelected) {
+      setSelectedBulkEmpIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedBulkEmpIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  // Auto calculate attendance status based on shift start time & late tolerance (single mode)
   useEffect(() => {
-    if (isStatusManuallyOverridden || hasNoCheckIn || !checkInTime || !selectedEmployee) {
+    if (inputMode !== 'single' || isStatusManuallyOverridden || hasNoCheckIn || !checkInTime || !selectedEmployee) {
       return;
     }
 
-    const shiftStart = selectedEmployee.shift.startTime; // e.g. "08:30"
+    const shiftStart = selectedEmployee.shift.startTime;
     const lateTolerance = selectedEmployee.shift.lateToleranceMinutes || 15;
 
     const [startH, startM] = shiftStart.split(':').map(Number);
@@ -127,18 +178,13 @@ export default function ManualAttendanceModal({
     } else {
       setStatus('Hadir Tepat Waktu');
     }
-  }, [checkInTime, selectedEmployee, hasNoCheckIn, isStatusManuallyOverridden]);
+  }, [checkInTime, selectedEmployee, hasNoCheckIn, isStatusManuallyOverridden, inputMode]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setFormError(null);
-
-    if (!selectedEmployee) {
-      setFormError('Pilih karyawan terlebih dahulu.');
-      return;
-    }
 
     if (!date) {
       setFormError('Pilih tanggal presensi.');
@@ -162,6 +208,65 @@ export default function ManualAttendanceModal({
 
     const finalCheckIn = hasNoCheckIn ? null : `${checkInTime}:00`;
     const finalCheckOut = hasNoCheckOut ? null : `${checkOutTime}:00`;
+    const roleLabel = currentEmployee
+      ? currentEmployee.systemRole === 'superadmin'
+        ? 'Superadmin'
+        : 'Administrator'
+      : 'Administrator';
+
+    // Bulk Mode Submission
+    if (inputMode === 'bulk' && !isEditing) {
+      if (selectedBulkEmpIds.length === 0) {
+        setFormError('Pilih minimal satu karyawan untuk input presensi massal.');
+        return;
+      }
+
+      const targetEmployees = employees.filter((emp) => selectedBulkEmpIds.includes(emp.id));
+      const recordsToSave: AttendanceRecord[] = targetEmployees.map((emp) => ({
+        id: `att-manual-${Date.now()}-${emp.id}`,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        employeeNik: emp.nik,
+        department: emp.department,
+        date,
+        type: attendanceType,
+        checkInTime: finalCheckIn,
+        checkOutTime: finalCheckOut,
+        status,
+        checkInPhoto: emp.avatarUrl,
+        checkOutPhoto: emp.avatarUrl,
+        location: {
+          latitude: -6.2255,
+          longitude: 106.8095,
+          accuracy: 10,
+          address: 'Input Manual Administrator (Semua User)',
+          distanceToOfficeMeters: 0,
+          isWithinRadius: true,
+        },
+        notes: notes.trim()
+          ? notes.trim()
+          : `Input manual massal oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`,
+        isManualEntry: true,
+        recordedBy: currentEmployee ? `${currentEmployee.name} (${roleLabel})` : undefined,
+      }));
+
+      if (onSaveBulk) {
+        onSaveBulk(
+          recordsToSave,
+          `Berhasil mencatat presensi manual untuk ${recordsToSave.length} karyawan pada tanggal ${date}!`
+        );
+      } else {
+        recordsToSave.forEach((r) => onSave(r, true));
+      }
+      onClose();
+      return;
+    }
+
+    // Single Mode Submission
+    if (!selectedEmployee) {
+      setFormError('Pilih karyawan terlebih dahulu.');
+      return;
+    }
 
     const recordToSave: AttendanceRecord = {
       id: initialRecord?.id || `att-manual-${Date.now()}`,
@@ -174,47 +279,56 @@ export default function ManualAttendanceModal({
       checkInTime: finalCheckIn,
       checkOutTime: finalCheckOut,
       status,
-      checkInPhoto: initialRecord?.checkInPhoto,
-      checkOutPhoto: initialRecord?.checkOutPhoto,
+      checkInPhoto: initialRecord?.checkInPhoto || selectedEmployee.avatarUrl,
+      checkOutPhoto: initialRecord?.checkOutPhoto || selectedEmployee.avatarUrl,
       location: initialRecord?.location || {
-        latitude: -6.2088,
-        longitude: 106.8456,
+        latitude: -6.2255,
+        longitude: 106.8095,
         accuracy: 10,
-        address: 'Input Manual Administrator / Mandiri',
+        address: 'Input Manual Administrator',
         distanceToOfficeMeters: 0,
         isWithinRadius: true,
       },
       notes: notes.trim() 
         ? notes.trim() 
-        : (isEditing ? 'Disesuaikan secara manual' : 'Diinput manual'),
+        : (isEditing ? 'Disesuaikan secara manual' : `Diinput manual oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`),
       isManualEntry: true,
+      recordedBy: currentEmployee ? `${currentEmployee.name} (${roleLabel})` : undefined,
     };
 
     onSave(recordToSave, !isEditing);
     onClose();
   };
 
+  const isSuperadmin = currentEmployee?.systemRole === 'superadmin';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
         
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/90">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
               <Clock className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>{isEditing ? 'Edit Jam Masuk & Pulang' : 'Input Presensi Manual'}</span>
-                <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-semibold">
-                  Manual Entry
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">
+                  {isEditing ? 'Edit Jam Presensi Karyawan' : 'Input Presensi Manual'}
+                </h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  isSuperadmin 
+                    ? 'bg-purple-100 text-purple-700 border border-purple-200' 
+                    : 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                }`}>
+                  {isSuperadmin ? '👑 Superadmin' : '🛡️ Admin'}
                 </span>
-              </h3>
+              </div>
               <p className="text-xs text-slate-500">
                 {isEditing 
                   ? 'Perbarui jam masuk atau jam pulang untuk data kehadiran yang sudah ada'
-                  : 'Catat jam masuk dan jam pulang secara manual untuk karyawan yang lupa absen'}
+                  : 'Catat jam masuk dan jam pulang secara manual untuk satu karyawan atau semua user'}
               </p>
             </div>
           </div>
@@ -228,6 +342,40 @@ export default function ManualAttendanceModal({
           </button>
         </div>
 
+        {/* Mode Selector Tabs (If not editing existing single record) */}
+        {!isEditing && (
+          <div className="px-5 pt-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setInputMode('single')}
+              className={`flex items-center gap-2 py-2 px-3 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+                inputMode === 'single'
+                  ? 'border-blue-600 text-blue-700 bg-white rounded-t-lg'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Satu Karyawan</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInputMode('bulk')}
+              className={`flex items-center gap-2 py-2 px-3 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+                inputMode === 'bulk'
+                  ? 'border-blue-600 text-blue-700 bg-white rounded-t-lg'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Semua Karyawan (Input Massal)</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
+                {employees.length}
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Modal Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
           
@@ -238,40 +386,123 @@ export default function ManualAttendanceModal({
             </div>
           )}
 
-          {/* 1. Pilih Karyawan */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-blue-600" />
-              <span>Karyawan <span className="text-rose-500">*</span></span>
-            </label>
-            <select
-              id="manual-emp-select"
-              value={selectedEmpId}
-              disabled={isEditing}
-              onChange={(e) => {
-                setSelectedEmpId(e.target.value);
-                setIsStatusManuallyOverridden(false);
-              }}
-              className={`w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                isEditing ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white text-slate-800'
-              }`}
-            >
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} ({emp.nik}) - {emp.department}
-                </option>
-              ))}
-            </select>
+          {/* SINGLE MODE: Pilih 1 Karyawan */}
+          {inputMode === 'single' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-blue-600" />
+                <span>Pilih Karyawan <span className="text-rose-500">*</span></span>
+              </label>
+              <select
+                id="manual-emp-select"
+                value={selectedEmpId}
+                disabled={isEditing}
+                onChange={(e) => {
+                  setSelectedEmpId(e.target.value);
+                  setIsStatusManuallyOverridden(false);
+                }}
+                className={`w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  isEditing ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white text-slate-800'
+                }`}
+              >
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} ({emp.nik}) - {emp.department} [{emp.systemRole}]
+                  </option>
+                ))}
+              </select>
 
-            {selectedEmployee && (
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs text-slate-600">
-                <span>Shift Kerja: <strong>{selectedEmployee.shift.startTime} - {selectedEmployee.shift.endTime}</strong></span>
-                <span>Toleransi: <strong>{selectedEmployee.shift.lateToleranceMinutes} mnt</strong></span>
+              {selectedEmployee && (
+                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs text-slate-600">
+                  <span>Shift Kerja: <strong>{selectedEmployee.shift.startTime} - {selectedEmployee.shift.endTime}</strong></span>
+                  <span>Toleransi: <strong>{selectedEmployee.shift.lateToleranceMinutes} mnt</strong></span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BULK MODE: Pilih Semua / Checklist Karyawan */}
+          {inputMode === 'bulk' && !isEditing && (
+            <div className="space-y-2 p-3.5 rounded-xl bg-blue-50/40 border border-blue-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                  <Users className="w-4 h-4 text-blue-600" />
+                  <span>Target Karyawan ({selectedBulkEmpIds.length} dari {employees.length} dipilih)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSelectAllBulkVisible}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+                >
+                  {filteredBulkEmployees.every((e) => selectedBulkEmpIds.includes(e.id))
+                    ? 'Batal Pilih Semua'
+                    : 'Pilih Semua'}
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* 2. Tanggal Presensi & Tipe Kehadiran */}
+              {/* Sub filters */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama karyawan..."
+                    value={bulkSearchQuery}
+                    onChange={(e) => setBulkSearchQuery(e.target.value)}
+                    className="w-full py-1 pl-7 pr-2 text-xs rounded-lg border border-slate-200 bg-white"
+                  />
+                </div>
+                <select
+                  value={bulkDeptFilter}
+                  onChange={(e) => setBulkDeptFilter(e.target.value)}
+                  className="py-1 px-2 text-xs rounded-lg border border-slate-200 bg-white"
+                >
+                  <option value="all">Semua Dept</option>
+                  {departments.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Checklist box */}
+              <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 bg-white rounded-lg border border-slate-200">
+                {filteredBulkEmployees.map((emp) => {
+                  const isChecked = selectedBulkEmpIds.includes(emp.id);
+                  return (
+                    <div
+                      key={emp.id}
+                      onClick={() => handleToggleBulkEmp(emp.id)}
+                      className={`p-2 flex items-center justify-between gap-2 text-xs cursor-pointer ${
+                        isChecked ? 'bg-blue-50/60' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="text-blue-600 shrink-0">
+                          {isChecked ? (
+                            <CheckSquare className="w-3.5 h-3.5 fill-blue-600 text-white" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5 text-slate-300" />
+                          )}
+                        </div>
+                        <img
+                          src={emp.avatarUrl}
+                          alt={emp.name}
+                          className="w-6 h-6 rounded-full object-cover border"
+                        />
+                        <span className="font-semibold text-slate-800 truncate">{emp.name}</span>
+                        <span className="text-[10px] text-slate-400">({emp.nik})</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 shrink-0">{emp.department}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Tanggal Presensi & Tipe Kehadiran */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -307,7 +538,7 @@ export default function ManualAttendanceModal({
             </div>
           </div>
 
-          {/* 3. Jam Masuk & Jam Pulang (Card Focus) */}
+          {/* Jam Masuk & Jam Pulang */}
           <div className="p-4 rounded-xl bg-blue-50/40 border border-blue-100 space-y-4">
             <div className="text-xs font-bold text-blue-900 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
@@ -348,9 +579,6 @@ export default function ManualAttendanceModal({
                     hasNoCheckIn ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-800'
                   }`}
                 />
-                <p className="text-[10px] text-slate-400">
-                  {hasNoCheckIn ? 'Tidak ada catatan jam masuk' : `Shift standar: ${selectedEmployee?.shift.startTime || '08:30'}`}
-                </p>
               </div>
 
               {/* Jam Pulang */}
@@ -366,7 +594,7 @@ export default function ManualAttendanceModal({
                       onChange={(e) => setHasNoCheckOut(e.target.checked)}
                       className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
                     />
-                    <span>Belum Pulang</span>
+                    <span>Belum / Lewati</span>
                   </label>
                 </div>
 
@@ -380,111 +608,107 @@ export default function ManualAttendanceModal({
                     hasNoCheckOut ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-800'
                   }`}
                 />
-                <p className="text-[10px] text-slate-400">
-                  {hasNoCheckOut ? 'Karyawan belum melakukan absen pulang' : `Shift pulang: ${selectedEmployee?.shift.endTime || '17:30'}`}
-                </p>
               </div>
             </div>
           </div>
 
-          {/* 4. Status Kehadiran */}
-          <div className="space-y-1.5">
+          {/* Status Kehadiran */}
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700">
-                Status Kehadiran <span className="text-rose-500">*</span>
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Status Kehadiran</span>
               </label>
-              {!isStatusManuallyOverridden && !hasNoCheckIn && (
-                <span className="text-[11px] text-blue-600 font-medium flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Dihitung Otomatis dari Jam Masuk
+              {isStatusManuallyOverridden && (
+                <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                  Ditetapkan manual
                 </span>
               )}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {(['Hadir Tepat Waktu', 'Terlambat', 'Izin', 'Sakit', 'Alpha'] as AttendanceStatus[]).map((st) => {
-                const isSelected = status === st;
-                return (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => {
-                      setStatus(st);
-                      setIsStatusManuallyOverridden(true);
-                    }}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all text-left flex items-center justify-between cursor-pointer ${
-                      isSelected
-                        ? st === 'Hadir Tepat Waktu'
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-1 ring-emerald-400'
-                          : st === 'Terlambat'
-                          ? 'bg-amber-50 border-amber-300 text-amber-800 ring-1 ring-amber-400'
-                          : 'bg-blue-50 border-blue-300 text-blue-800 ring-1 ring-blue-400'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span>{st}</span>
-                    {isSelected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 5. Alasan / Keterangan Manual */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-blue-600" />
-              <span>Alasan / Keterangan Penginputan Manual</span>
-            </label>
-            
-            <textarea
-              id="manual-notes-textarea"
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Contoh: Karyawan lupa absen karena langsung mengikuti meeting dengan klien..."
-              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-
-            {/* Quick Reason Chips */}
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_REASONS.map((reason) => (
+              {(['Hadir Tepat Waktu', 'Terlambat', 'Izin', 'Sakit', 'Alpha'] as AttendanceStatus[]).map((st) => (
                 <button
-                  key={reason}
+                  key={st}
                   type="button"
-                  onClick={() => setNotes(reason)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] transition-colors cursor-pointer"
+                  onClick={() => {
+                    setStatus(st);
+                    setIsStatusManuallyOverridden(true);
+                  }}
+                  className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition-all text-center cursor-pointer ${
+                    status === st
+                      ? st === 'Hadir Tepat Waktu'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : st === 'Terlambat'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : st === 'Alpha'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                        : 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
                 >
-                  + {reason}
+                  {st}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Information box */}
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-500 leading-relaxed">
-            Presensi manual ini akan tercatat dalam sistem audit riwayat absensi dengan penanda <strong>Manual Entry</strong>.
-          </div>
+          {/* Catatan / Alasan */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-blue-600" />
+              <span>Catatan / Alasan Input Manual</span>
+            </label>
+            <textarea
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Misal: Kendala jaringan pada ponsel karyawan, atasan telah memverifikasi"
+              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
 
-          {/* Modal Footer Buttons */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              id="btn-submit-manual-attendance"
-              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{isEditing ? 'Simpan Perubahan' : 'Simpan Presensi Manual'}</span>
-            </button>
+            {/* Quick Reason Pills */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {QUICK_REASONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setNotes(r)}
+                  className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800 transition-colors cursor-pointer"
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </div>
 
         </form>
+
+        {/* Footer */}
+        <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            Batal
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>
+              {isEditing 
+                ? 'Simpan Perubahan' 
+                : inputMode === 'bulk'
+                ? `Simpan Presensi (${selectedBulkEmpIds.length} Karyawan)`
+                : 'Simpan Presensi Manual'}
+            </span>
+          </button>
+        </div>
 
       </div>
     </div>

@@ -39,6 +39,7 @@ import EmployeeManagement from './components/EmployeeManagement';
 import AttendanceModal from './components/AttendanceModal';
 import OfficeSettingsModal from './components/OfficeSettingsModal';
 import ManualAttendanceModal from './components/ManualAttendanceModal';
+import AutoAttendanceModal from './components/AutoAttendanceModal';
 
 export default function App() {
   // Persistence with localStorage
@@ -87,6 +88,7 @@ export default function App() {
   const [attendanceModalMode, setAttendanceModalMode] = useState<'in' | 'out'>('in');
   const [isOfficeModalOpen, setIsOfficeModalOpen] = useState<boolean>(false);
   const [isManualAttendanceModalOpen, setIsManualAttendanceModalOpen] = useState<boolean>(false);
+  const [isAutoAttendanceModalOpen, setIsAutoAttendanceModalOpen] = useState<boolean>(false);
   const [editingAttendanceRecord, setEditingAttendanceRecord] = useState<AttendanceRecord | null>(null);
 
   // Notification Toast
@@ -287,7 +289,27 @@ export default function App() {
     setIsManualAttendanceModalOpen(true);
   };
 
-  const handleSaveManualAttendance = (record: AttendanceRecord, isNew: boolean) => {
+  const handleSaveManualAttendance = (
+    record: AttendanceRecord, 
+    isNew: boolean, 
+    additionalRecords?: AttendanceRecord[]
+  ) => {
+    const allRecords = [record, ...(additionalRecords || [])];
+
+    if (allRecords.length > 1) {
+      // Bulk manual attendance
+      setAttendanceRecords((prev) => {
+        const map = new Map<string, AttendanceRecord>();
+        prev.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+        allRecords.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+        return Array.from(map.values()).sort((a, b) => 
+          (b.date + (b.checkInTime || '')).localeCompare(a.date + (a.checkInTime || ''))
+        );
+      });
+      showToast(`Presensi manual berhasil disimpan untuk ${allRecords.length} karyawan terpilih!`, 'success');
+      return;
+    }
+
     if (isNew) {
       // Check if employee already has attendance recorded for that date
       const existingIndex = attendanceRecords.findIndex(
@@ -312,9 +334,46 @@ export default function App() {
     }
   };
 
+  // Auto Attendance Execution Handler (Admin & Superadmin)
+  const handleExecuteAutoAttendance = (generatedRecords: AttendanceRecord[], message?: string) => {
+    if (generatedRecords.length === 0) return;
+
+    setAttendanceRecords((prev) => {
+      const map = new Map<string, AttendanceRecord>();
+      prev.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+      generatedRecords.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+      return Array.from(map.values()).sort((a, b) => 
+        (b.date + (b.checkInTime || '')).localeCompare(a.date + (a.checkInTime || ''))
+      );
+    });
+
+    showToast(message || `Presensi otomatis berhasil di-generate untuk ${generatedRecords.length} karyawan!`, 'success');
+  };
+
   const handleDeleteAttendanceRecord = (recordId: string) => {
+    if (currentEmployee.systemRole !== 'admin' && currentEmployee.systemRole !== 'superadmin') {
+      showToast('Akses ditolak: Hanya Admin & Superadmin yang dapat menghapus data absensi.', 'error');
+      return;
+    }
+    const target = attendanceRecords.find((r) => r.id === recordId);
     setAttendanceRecords((prev) => prev.filter((r) => r.id !== recordId));
-    showToast('Data presensi berhasil dihapus.', 'info');
+    showToast(
+      target 
+        ? `Data presensi ${target.employeeName} (${target.date}) berhasil dihapus.` 
+        : 'Data presensi berhasil dihapus.', 
+      'info'
+    );
+  };
+
+  const handleDeleteMultipleAttendanceRecords = (recordIds: string[]) => {
+    if (currentEmployee.systemRole !== 'admin' && currentEmployee.systemRole !== 'superadmin') {
+      showToast('Akses ditolak: Hanya Admin & Superadmin yang dapat menghapus data absensi.', 'error');
+      return;
+    }
+    if (recordIds.length === 0) return;
+    const idSet = new Set(recordIds);
+    setAttendanceRecords((prev) => prev.filter((r) => !idSet.has(r.id)));
+    showToast(`${recordIds.length} data presensi berhasil dihapus sekaligus oleh Admin.`, 'info');
   };
 
   // Add new employee
@@ -473,6 +532,7 @@ export default function App() {
                   handleOpenManualAttendance();
                 }
               }}
+              onOpenAutoAttendanceModal={() => setIsAutoAttendanceModalOpen(true)}
               userDistanceToOffice={userDistanceToOffice}
               isWithinOfficeRadius={isWithinOfficeRadius}
             />
@@ -628,9 +688,12 @@ export default function App() {
               records={attendanceRecords}
               employees={employees}
               departments={departments}
+              currentEmployee={currentEmployee}
               onOpenManualAttendanceModal={() => handleOpenManualAttendance()}
+              onOpenAutoAttendanceModal={() => setIsAutoAttendanceModalOpen(true)}
               onEditAttendanceRecord={(record) => handleOpenManualAttendance(record)}
               onDeleteAttendanceRecord={handleDeleteAttendanceRecord}
+              onDeleteMultipleAttendanceRecords={handleDeleteMultipleAttendanceRecords}
             />
           </div>
         )}
@@ -692,7 +755,7 @@ export default function App() {
         }}
       />
 
-      {/* Manual Attendance Entry & Edit Modal */}
+      {/* Manual Attendance Entry & Edit Modal (Includes Single & Bulk for Admin/Superadmin) */}
       <ManualAttendanceModal
         isOpen={isManualAttendanceModalOpen}
         onClose={() => {
@@ -700,9 +763,21 @@ export default function App() {
           setEditingAttendanceRecord(null);
         }}
         employees={employees}
+        currentEmployee={currentEmployee}
         initialEmployeeId={currentEmployee.id}
         initialRecord={editingAttendanceRecord}
         onSave={handleSaveManualAttendance}
+      />
+
+      {/* Auto Attendance Generation Modal (Admin & Superadmin) */}
+      <AutoAttendanceModal
+        isOpen={isAutoAttendanceModalOpen}
+        onClose={() => setIsAutoAttendanceModalOpen(false)}
+        employees={employees}
+        existingRecords={attendanceRecords}
+        officeConfig={officeConfig}
+        currentEmployee={currentEmployee}
+        onExecuteAutoAttendance={handleExecuteAutoAttendance}
       />
 
       {/* Footer */}

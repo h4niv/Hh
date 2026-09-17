@@ -20,8 +20,8 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     email: 'dimas.prasetyo@sinergi.co.id',
     phone: '+62 812-3456-7890',
     department: 'Teknologi & Informasi',
-    role: 'Senior Software Engineer',
-    systemRole: 'admin',
+    role: 'Head of IT & System Architect',
+    systemRole: 'superadmin',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     shift: {
       id: 'shift-1',

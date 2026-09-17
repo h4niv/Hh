@@ -12,6 +12,7 @@ import {
   UserPlus,
   ShieldCheck,
   ShieldAlert,
+  Crown,
   User,
   Lock
 } from 'lucide-react';
@@ -40,9 +41,11 @@ export default function Header({
 }: HeaderProps) {
   const [time, setTime] = useState(new Date());
   const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
-  const [dropdownRoleFilter, setDropdownRoleFilter] = useState<'all' | 'admin' | 'karyawan'>('all');
+  const [dropdownRoleFilter, setDropdownRoleFilter] = useState<'all' | 'superadmin' | 'admin' | 'karyawan'>('all');
 
+  const isSuperadmin = currentEmployee.systemRole === 'superadmin';
   const isAdmin = currentEmployee.systemRole === 'admin';
+  const isAdminOrSuper = isSuperadmin || isAdmin;
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -64,8 +67,9 @@ export default function Header({
   });
 
   const filteredDropdownEmployees = employees.filter((emp) => {
+    if (dropdownRoleFilter === 'superadmin') return emp.systemRole === 'superadmin';
     if (dropdownRoleFilter === 'admin') return emp.systemRole === 'admin';
-    if (dropdownRoleFilter === 'karyawan') return emp.systemRole !== 'admin';
+    if (dropdownRoleFilter === 'karyawan') return emp.systemRole === 'karyawan';
     return true;
   });
 
@@ -123,7 +127,9 @@ export default function Header({
                 id="employee-selector-btn"
                 onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
                 className={`flex items-center gap-3 p-1.5 pr-3 rounded-xl border transition-all shadow-2xs text-left cursor-pointer ${
-                  isAdmin 
+                  isSuperadmin
+                    ? 'border-purple-200 bg-purple-50/50 hover:bg-purple-50'
+                    : isAdmin 
                     ? 'border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50' 
                     : 'border-slate-200 bg-white hover:bg-slate-50'
                 }`}
@@ -134,7 +140,15 @@ export default function Header({
                     alt={currentEmployee.name}
                     className="w-8 h-8 rounded-lg object-cover border border-slate-200"
                   />
-                  {isAdmin && (
+                  {isSuperadmin && (
+                    <span 
+                      className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-purple-600 rounded-full border border-white flex items-center justify-center"
+                      title="Role: Superadministrator"
+                    >
+                      <Crown className="w-2.5 h-2.5 text-white" />
+                    </span>
+                  )}
+                  {isAdmin && !isSuperadmin && (
                     <span 
                       className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-600 rounded-full border border-white flex items-center justify-center"
                       title="Role: Administrator"
@@ -146,7 +160,12 @@ export default function Header({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-semibold text-slate-800 truncate">{currentEmployee.name}</span>
-                    {isAdmin ? (
+                    {isSuperadmin ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold border border-purple-200">
+                        <Crown className="w-2.5 h-2.5 text-purple-600" />
+                        Superadmin
+                      </span>
+                    ) : isAdmin ? (
                       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200">
                         <ShieldCheck className="w-2.5 h-2.5 text-indigo-600" />
                         Admin
@@ -181,15 +200,15 @@ export default function Header({
                       <span className="text-[11px] text-slate-400">Total: {employees.length} Karyawan</span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Ganti akun untuk menguji fitur sebagai <strong>Administrator</strong> atau <strong>Karyawan</strong>
+                      Ganti akun aktif untuk simulasi fitur sebagai <strong>Superadmin</strong>, <strong>Admin</strong>, atau <strong>Karyawan</strong>
                     </p>
 
                     {/* Role Filter Tabs */}
-                    <div className="flex items-center gap-1 mt-2.5 p-0.5 bg-slate-100 rounded-lg text-xs">
+                    <div className="grid grid-cols-4 gap-1 mt-2.5 p-0.5 bg-slate-100 rounded-lg text-xs">
                       <button
                         type="button"
                         onClick={() => setDropdownRoleFilter('all')}
-                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer ${
+                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer text-center ${
                           dropdownRoleFilter === 'all'
                             ? 'bg-white text-slate-900 shadow-2xs font-semibold'
                             : 'text-slate-600 hover:text-slate-900'
@@ -199,27 +218,39 @@ export default function Header({
                       </button>
                       <button
                         type="button"
+                        onClick={() => setDropdownRoleFilter('superadmin')}
+                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
+                          dropdownRoleFilter === 'superadmin'
+                            ? 'bg-purple-600 text-white shadow-2xs font-semibold'
+                            : 'text-purple-700 hover:bg-purple-50'
+                        }`}
+                      >
+                        <Crown className="w-2.5 h-2.5" />
+                        Super ({employees.filter(e => e.systemRole === 'superadmin').length})
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setDropdownRoleFilter('admin')}
-                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
                           dropdownRoleFilter === 'admin'
                             ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
                             : 'text-indigo-700 hover:bg-indigo-50'
                         }`}
                       >
-                        <ShieldCheck className="w-3 h-3" />
+                        <ShieldCheck className="w-2.5 h-2.5" />
                         Admin ({employees.filter(e => e.systemRole === 'admin').length})
                       </button>
                       <button
                         type="button"
                         onClick={() => setDropdownRoleFilter('karyawan')}
-                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
                           dropdownRoleFilter === 'karyawan'
                             ? 'bg-slate-700 text-white shadow-2xs font-semibold'
                             : 'text-slate-600 hover:bg-slate-200'
                         }`}
                       >
-                        <User className="w-3 h-3" />
-                        Karyawan ({employees.filter(e => e.systemRole !== 'admin').length})
+                        <User className="w-2.5 h-2.5" />
+                        Staf ({employees.filter(e => e.systemRole === 'karyawan').length})
                       </button>
                     </div>
                   </div>
@@ -232,6 +263,7 @@ export default function Header({
                     ) : (
                       filteredDropdownEmployees.map((emp) => {
                         const isSelected = emp.id === currentEmployee.id;
+                        const isEmpSuper = emp.systemRole === 'superadmin';
                         const isEmpAdmin = emp.systemRole === 'admin';
 
                         return (
@@ -253,7 +285,12 @@ export default function Header({
                                 alt={emp.name}
                                 className="w-9 h-9 rounded-lg object-cover border border-slate-200"
                               />
-                              {isEmpAdmin && (
+                              {isEmpSuper && (
+                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-purple-600 rounded-full border border-white flex items-center justify-center" title="Superadministrator">
+                                  <Crown className="w-2.5 h-2.5 text-white" />
+                                </span>
+                              )}
+                              {isEmpAdmin && !isEmpSuper && (
                                 <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-600 rounded-full border border-white flex items-center justify-center" title="Administrator">
                                   <ShieldCheck className="w-2.5 h-2.5 text-white" />
                                 </span>
@@ -265,7 +302,12 @@ export default function Header({
                                   {emp.name}
                                 </span>
                                 <div className="flex items-center gap-1 shrink-0">
-                                  {isEmpAdmin ? (
+                                  {isEmpSuper ? (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 font-bold border border-purple-200 flex items-center gap-0.5">
+                                      <Crown className="w-2.5 h-2.5" />
+                                      Superadmin
+                                    </span>
+                                  ) : isEmpAdmin ? (
                                     <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 flex items-center gap-0.5">
                                       <ShieldCheck className="w-2.5 h-2.5" />
                                       Admin
