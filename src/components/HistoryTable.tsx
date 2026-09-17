@@ -868,32 +868,65 @@ export default function HistoryTable({
                     </td>
 
                     {/* Check In */}
-                    <td className="px-4 py-3 whitespace-nowrap font-mono font-medium text-slate-800">
-                      {record.checkInTime ? `${record.checkInTime} WIB` : '-'}
+                    <td className="px-4 py-3 whitespace-nowrap font-mono">
+                      <div className="font-medium text-slate-800">
+                        {record.checkInTime ? `${record.checkInTime} WIB` : '-'}
+                      </div>
+                      {record.lateMinutes && record.lateMinutes > 0 ? (
+                        <div className="text-[10px] font-bold text-amber-700 flex items-center gap-1 mt-0.5">
+                          <ClockAlert className="w-3 h-3 text-amber-600" />
+                          <span>Terlambat {record.lateMinutes} mnt</span>
+                        </div>
+                      ) : null}
                     </td>
 
                     {/* Check Out */}
-                    <td className="px-4 py-3 whitespace-nowrap font-mono font-medium text-slate-800">
-                      {record.checkOutTime ? `${record.checkOutTime} WIB` : (
-                        <span className="text-slate-400 italic">Belum Pulang</span>
-                      )}
+                    <td className="px-4 py-3 whitespace-nowrap font-mono">
+                      <div className="font-medium text-slate-800">
+                        {record.checkOutTime ? `${record.checkOutTime} WIB` : (
+                          <span className="text-slate-400 italic">Belum Pulang</span>
+                        )}
+                      </div>
+                      {record.earlyMinutes && record.earlyMinutes > 0 ? (
+                        <div className="text-[10px] font-bold text-indigo-700 flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-indigo-600" />
+                          <span>Pulang Awal {record.earlyMinutes} mnt</span>
+                        </div>
+                      ) : null}
                     </td>
 
                     {/* Status */}
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                        isOnTime
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : isLate
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                          : isLeave
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {isOnTime && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
-                        {isLate && <ClockAlert className="w-3 h-3 text-amber-600" />}
-                        {record.status}
-                      </span>
+                      <div className="space-y-1">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                          isOnTime
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : isLate
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : isLeave
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {isOnTime && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                          {isLate && <ClockAlert className="w-3 h-3 text-amber-600" />}
+                          {record.status}
+                          {isLate && record.lateMinutes ? ` (${record.lateMinutes}m)` : ''}
+                        </span>
+
+                        {record.hasLatePermit && (
+                          <div className="flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-300 w-fit">
+                            <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                            <span>Izin Terlambat Disetujui</span>
+                          </div>
+                        )}
+
+                        {record.hasEarlyPermit && (
+                          <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-800 bg-indigo-100/90 px-2 py-0.5 rounded-md border border-indigo-300 w-fit">
+                            <Sparkles className="w-2.5 h-2.5 text-indigo-600" />
+                            <span>Izin Pulang Awal Disetujui</span>
+                          </div>
+                        )}
+                      </div>
                     </td>
 
                     {/* Photo Verification Thumbnail */}

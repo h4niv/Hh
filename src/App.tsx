@@ -171,6 +171,10 @@ export default function App() {
     location: GeoLocationData;
     status: AttendanceStatus;
     notes: string;
+    lateMinutes?: number;
+    hasLatePermit?: boolean;
+    earlyMinutes?: number;
+    hasEarlyPermit?: boolean;
   }) => {
     const nowTime = getCurrentTimeString();
 
@@ -189,10 +193,13 @@ export default function App() {
         checkInPhoto: data.photo,
         location: data.location,
         notes: data.notes,
+        lateMinutes: data.lateMinutes,
+        hasLatePermit: data.hasLatePermit,
       };
 
       setAttendanceRecords((prev) => [newRecord, ...prev.filter(r => !(r.employeeId === currentEmployee.id && r.date === todayStr))]);
-      showToast(`Absen Masuk berhasil dicatat pukul ${nowTime} WIB! Status: ${data.status}`);
+      const lateNotice = data.lateMinutes && data.lateMinutes > 0 ? ` (Terhitung keterlambatan: ${data.lateMinutes} menit)` : '';
+      showToast(`Absen Masuk berhasil dicatat pukul ${nowTime} WIB! Status: ${data.status}${lateNotice}`);
     } else {
       // Clock out
       setAttendanceRecords((prev) =>
@@ -202,13 +209,16 @@ export default function App() {
               ...r,
               checkOutTime: nowTime,
               checkOutPhoto: data.photo,
+              earlyMinutes: data.earlyMinutes,
+              hasEarlyPermit: data.hasEarlyPermit,
               notes: data.notes ? `${r.notes ? r.notes + ' | ' : ''}Pulang: ${data.notes}` : r.notes,
             };
           }
           return r;
         })
       );
-      showToast(`Absen Pulang berhasil dicatat pukul ${nowTime} WIB! Selamat beristirahat.`);
+      const earlyNotice = data.earlyMinutes && data.earlyMinutes > 0 ? ` (Pulang lebih awal: ${data.earlyMinutes} menit)` : '';
+      showToast(`Absen Pulang berhasil dicatat pukul ${nowTime} WIB!${earlyNotice} Selamat beristirahat.`);
     }
 
     setIsAttendanceModalOpen(false);
@@ -266,12 +276,16 @@ export default function App() {
         // For partial-day permits (late arrival or early departure), append note to attendance record
         setAttendanceRecords((prev) =>
           prev.map((rec) => {
-            if (rec.employeeId === targetReq.employeeId && rec.date === todayStr) {
+            if (rec.employeeId === targetReq.employeeId && rec.date === targetReq.startDate) {
               const noteText = targetReq.type === 'Izin Datang Terlambat'
                 ? `[Izin Terlambat Disetujui: Tiba ${targetReq.estimatedArrivalTime || '-'}, ${targetReq.lateMinutes || 0} mnt]`
                 : `[Izin Pulang Awal Disetujui: Pulang ${targetReq.estimatedDepartureTime || '-'}, Awal ${targetReq.earlyDepartureMinutes || 0} mnt]`;
               return {
                 ...rec,
+                hasLatePermit: targetReq.type === 'Izin Datang Terlambat' ? true : rec.hasLatePermit,
+                hasEarlyPermit: targetReq.type === 'Izin Pulang Awal' ? true : rec.hasEarlyPermit,
+                lateMinutes: targetReq.type === 'Izin Datang Terlambat' ? (rec.lateMinutes || targetReq.lateMinutes) : rec.lateMinutes,
+                earlyMinutes: targetReq.type === 'Izin Pulang Awal' ? (rec.earlyMinutes || targetReq.earlyDepartureMinutes) : rec.earlyMinutes,
                 notes: rec.notes ? `${rec.notes} • ${noteText}` : noteText,
               };
             }
@@ -822,6 +836,8 @@ export default function App() {
         mode={attendanceModalMode}
         employee={currentEmployee}
         officeConfig={officeConfig}
+        leaveRequests={leaveRequests}
+        todayCheckInTime={attendanceRecords.find(r => r.employeeId === currentEmployee.id && r.date === getTodayDateString())?.checkInTime}
         onClose={() => setIsAttendanceModalOpen(false)}
         onSubmit={handleConfirmAttendance}
       />

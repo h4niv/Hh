@@ -63,6 +63,10 @@ export interface AttendanceRecord {
   checkInTime: string | null; // "08:12:30"
   checkOutTime: string | null; // "17:05:10"
   status: AttendanceStatus;
+  lateMinutes?: number; // Durasi keterlambatan dalam menit (e.g. 30 menit jika jadwal 07:00 dan masuk 07:30)
+  earlyMinutes?: number; // Durasi pulang awal dalam menit
+  hasLatePermit?: boolean; // Apakah memiliki Izin Datang Terlambat yang disetujui
+  hasEarlyPermit?: boolean; // Apakah memiliki Izin Pulang Awal yang disetujui
   checkInPhoto?: string;
   checkOutPhoto?: string;
   location?: GeoLocationData;

@@ -25,6 +25,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee } from '../types';
+import { calculateLateMinutes, calculateEarlyMinutes } from '../utils/geo';
 
 interface ManualAttendanceModalProps {
   isOpen: boolean;
@@ -117,6 +118,12 @@ export default function ManualAttendanceModal({
   const [isStatusManuallyOverridden, setIsStatusManuallyOverridden] = useState<boolean>(
     Boolean(initialRecord)
   );
+  const [hasLatePermit, setHasLatePermit] = useState<boolean>(
+    initialRecord ? Boolean(initialRecord.hasLatePermit) : false
+  );
+  const [hasEarlyPermit, setHasEarlyPermit] = useState<boolean>(
+    initialRecord ? Boolean(initialRecord.hasEarlyPermit) : false
+  );
   const [notes, setNotes] = useState<string>(
     initialRecord?.notes || ''
   );
@@ -143,6 +150,8 @@ export default function ManualAttendanceModal({
       setCheckOutTime(initialRecord.checkOutTime ? initialRecord.checkOutTime.slice(0, 5) : '17:30');
       setHasNoCheckIn(!initialRecord.checkInTime);
       setHasNoCheckOut(!initialRecord.checkOutTime);
+      setHasLatePermit(Boolean(initialRecord.hasLatePermit));
+      setHasEarlyPermit(Boolean(initialRecord.hasEarlyPermit));
       setStatus(initialRecord.status);
       setIsStatusManuallyOverridden(true);
       setNotes(initialRecord.notes || '');
@@ -157,6 +166,8 @@ export default function ManualAttendanceModal({
       setCheckOutTime('17:30');
       setHasNoCheckIn(false);
       setHasNoCheckOut(false);
+      setHasLatePermit(false);
+      setHasEarlyPermit(false);
       setIsStatusManuallyOverridden(false);
       setNotes('');
       setFormError(null);
@@ -328,6 +339,15 @@ export default function ManualAttendanceModal({
       } else if (attendanceType === 'Dinas Luar' && dinasSptNumber.trim() && !finalNote.includes(dinasSptNumber.trim())) {
         finalNote = `${finalNote} [SPT: ${dinasSptNumber.trim()}]`;
       }
+
+      if (hasLatePermit && singleLateMins > 0 && !finalNote.includes('Izin Datang Terlambat')) {
+        const permitTag = `[Izin Datang Terlambat Disetujui: ${singleLateMins} mnt]`;
+        finalNote = finalNote ? `${finalNote} • ${permitTag}` : permitTag;
+      }
+      if (hasEarlyPermit && singleEarlyMins > 0 && !finalNote.includes('Izin Pulang Awal')) {
+        const permitTag = `[Izin Pulang Awal Disetujui: ${singleEarlyMins} mnt]`;
+        finalNote = finalNote ? `${finalNote} • ${permitTag}` : permitTag;
+      }
       return finalNote;
     };
 
@@ -339,24 +359,35 @@ export default function ManualAttendanceModal({
       }
 
       const targetEmployees = employees.filter((emp) => selectedBulkEmpIds.includes(emp.id));
-      const recordsToSave: AttendanceRecord[] = targetEmployees.map((emp) => ({
-        id: `att-manual-${Date.now()}-${emp.id}`,
-        employeeId: emp.id,
-        employeeName: emp.name,
-        employeeNik: emp.nik,
-        department: emp.department,
-        date,
-        type: attendanceType,
-        checkInTime: finalCheckIn,
-        checkOutTime: finalCheckOut,
-        status,
-        checkInPhoto: emp.avatarUrl,
-        checkOutPhoto: emp.avatarUrl,
-        location: getRecordLocation('Input Manual Administrator (Semua User)'),
-        notes: getRecordNotes(`Input manual massal oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`),
-        isManualEntry: true,
-        recordedBy: currentEmployee ? `${currentEmployee.name} (${roleLabel})` : undefined,
-      }));
+      const recordsToSave: AttendanceRecord[] = targetEmployees.map((emp) => {
+        const empShiftStart = emp.shift?.startTime || '08:30';
+        const empShiftEnd = emp.shift?.endTime || '17:30';
+        const lateMins = calculateLateMinutes(finalCheckIn, empShiftStart);
+        const earlyMins = calculateEarlyMinutes(finalCheckOut, empShiftEnd, finalCheckIn, empShiftStart);
+
+        return {
+          id: `att-manual-${Date.now()}-${emp.id}`,
+          employeeId: emp.id,
+          employeeName: emp.name,
+          employeeNik: emp.nik,
+          department: emp.department,
+          date,
+          type: attendanceType,
+          checkInTime: finalCheckIn,
+          checkOutTime: finalCheckOut,
+          status,
+          lateMinutes: lateMins > 0 ? lateMins : undefined,
+          earlyMinutes: earlyMins > 0 ? earlyMins : undefined,
+          hasLatePermit: hasLatePermit && lateMins > 0 ? true : undefined,
+          hasEarlyPermit: hasEarlyPermit && earlyMins > 0 ? true : undefined,
+          checkInPhoto: emp.avatarUrl,
+          checkOutPhoto: emp.avatarUrl,
+          location: getRecordLocation('Input Manual Administrator (Semua User)'),
+          notes: getRecordNotes(`Input manual massal oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`),
+          isManualEntry: true,
+          recordedBy: currentEmployee ? `${currentEmployee.name} (${roleLabel})` : undefined,
+        };
+      });
 
       if (onSaveBulk) {
         onSaveBulk(
@@ -376,6 +407,11 @@ export default function ManualAttendanceModal({
       return;
     }
 
+    const singleShiftStart = selectedEmployee.shift?.startTime || '08:30';
+    const singleShiftEnd = selectedEmployee.shift?.endTime || '17:30';
+    const singleLateMins = calculateLateMinutes(finalCheckIn, singleShiftStart);
+    const singleEarlyMins = calculateEarlyMinutes(finalCheckOut, singleShiftEnd, finalCheckIn, singleShiftStart);
+
     const recordToSave: AttendanceRecord = {
       id: initialRecord?.id || `att-manual-${Date.now()}`,
       employeeId: selectedEmployee.id,
@@ -387,6 +423,10 @@ export default function ManualAttendanceModal({
       checkInTime: finalCheckIn,
       checkOutTime: finalCheckOut,
       status,
+      lateMinutes: singleLateMins > 0 ? singleLateMins : undefined,
+      earlyMinutes: singleEarlyMins > 0 ? singleEarlyMins : undefined,
+      hasLatePermit: hasLatePermit && singleLateMins > 0 ? true : undefined,
+      hasEarlyPermit: hasEarlyPermit && singleEarlyMins > 0 ? true : undefined,
       checkInPhoto: initialRecord?.checkInPhoto || selectedEmployee.avatarUrl,
       checkOutPhoto: initialRecord?.checkOutPhoto || selectedEmployee.avatarUrl,
       location: getRecordLocation('Input Manual Administrator'),
@@ -975,6 +1015,33 @@ export default function ManualAttendanceModal({
                     hasNoCheckIn ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-800'
                   }`}
                 />
+
+                {inputMode === 'single' && !hasNoCheckIn && selectedEmployee && (
+                  <div className="pt-1 space-y-1.5">
+                    {calculateLateMinutes(checkInTime, selectedEmployee.shift?.startTime || '08:30') > 0 ? (
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold text-amber-900 bg-amber-50 px-2 py-1 rounded-md border border-amber-200 flex items-center justify-between">
+                          <span>⏱️ Terhitung Terlambat: <strong>{calculateLateMinutes(checkInTime, selectedEmployee.shift?.startTime || '08:30')} Menit</strong></span>
+                          <span className="text-[10px] text-amber-700 font-mono">(Jadwal: {selectedEmployee.shift?.startTime || '08:30'})</span>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs text-amber-900 font-medium cursor-pointer px-1">
+                          <input
+                            type="checkbox"
+                            checked={hasLatePermit}
+                            onChange={(e) => setHasLatePermit(e.target.checked)}
+                            className="rounded text-amber-600 focus:ring-amber-500 h-3.5 w-3.5"
+                          />
+                          <span>✓ Setujui Izin Datang Terlambat (Dispen)</span>
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200 flex items-center justify-between">
+                        <span>✓ Tepat Waktu</span>
+                        <span className="text-[10px] text-emerald-700 font-mono">(Jadwal: {selectedEmployee.shift?.startTime || '08:30'})</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Jam Pulang */}
@@ -1004,6 +1071,38 @@ export default function ManualAttendanceModal({
                     hasNoCheckOut ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-800'
                   }`}
                 />
+
+                {inputMode === 'single' && !hasNoCheckOut && selectedEmployee && (
+                  <div className="pt-1 space-y-1.5">
+                    {calculateEarlyMinutes(
+                      checkOutTime,
+                      selectedEmployee.shift?.endTime || '17:30',
+                      checkInTime,
+                      selectedEmployee.shift?.startTime || '08:30'
+                    ) > 0 ? (
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold text-indigo-900 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-200 flex items-center justify-between">
+                          <span>⏱️ Pulang Awal: <strong>{calculateEarlyMinutes(checkOutTime, selectedEmployee.shift?.endTime || '17:30', checkInTime, selectedEmployee.shift?.startTime || '08:30')} Menit</strong></span>
+                          <span className="text-[10px] text-indigo-700 font-mono">(Shift: {selectedEmployee.shift?.endTime || '17:30'})</span>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs text-indigo-900 font-medium cursor-pointer px-1">
+                          <input
+                            type="checkbox"
+                            checked={hasEarlyPermit}
+                            onChange={(e) => setHasEarlyPermit(e.target.checked)}
+                            className="rounded text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                          />
+                          <span>✓ Setujui Izin Pulang Awal (Dispen)</span>
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-semibold text-slate-700 bg-slate-50 px-2 py-1 rounded-md border border-slate-200 flex items-center justify-between">
+                        <span>✓ Selesai Sesuai Shift (Tercover Awal Masuk)</span>
+                        <span className="text-[10px] text-slate-500 font-mono">(Shift: {selectedEmployee.shift?.endTime || '17:30'})</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -11,16 +11,19 @@ import {
   Home, 
   Briefcase,
   Sparkles,
-  Info
+  Info,
+  Clock
 } from 'lucide-react';
-import { Employee, OfficeConfig, AttendanceType, GeoLocationData, AttendanceStatus } from '../types';
-import { calculateDistanceMeters, getCurrentTimeString, getTodayDateString } from '../utils/geo';
+import { Employee, OfficeConfig, AttendanceType, GeoLocationData, AttendanceStatus, LeaveRequest } from '../types';
+import { calculateDistanceMeters, getCurrentTimeString, getTodayDateString, calculateLateMinutes, calculateEarlyMinutes } from '../utils/geo';
 
 interface AttendanceModalProps {
   isOpen: boolean;
   mode: 'in' | 'out';
   employee: Employee;
   officeConfig: OfficeConfig;
+  leaveRequests?: LeaveRequest[];
+  todayCheckInTime?: string | null;
   onClose: () => void;
   onSubmit: (data: {
     type: AttendanceType;
@@ -28,6 +31,10 @@ interface AttendanceModalProps {
     location: GeoLocationData;
     status: AttendanceStatus;
     notes: string;
+    lateMinutes?: number;
+    hasLatePermit?: boolean;
+    earlyMinutes?: number;
+    hasEarlyPermit?: boolean;
   }) => void;
 }
 
@@ -36,6 +43,8 @@ export default function AttendanceModal({
   mode,
   employee,
   officeConfig,
+  leaveRequests,
+  todayCheckInTime,
   onClose,
   onSubmit,
 }: AttendanceModalProps) {
@@ -223,18 +232,43 @@ export default function AttendanceModal({
     stopCamera();
   };
 
+  // Determine Shift & Late Info
+  const todayStr = getTodayDateString();
+  const nowTimeString = getCurrentTimeString();
+  const workStartTime = employee.shift?.startTime || officeConfig.workStartTime || '08:30';
+  const workEndTime = employee.shift?.endTime || officeConfig.workEndTime || '17:30';
+  
+  // Check if user has an approved late permit for today
+  const approvedLatePermit = leaveRequests?.find(
+    (r) =>
+      r.employeeId === employee.id &&
+      r.type === 'Izin Datang Terlambat' &&
+      r.status === 'Disetujui' &&
+      r.startDate <= todayStr &&
+      r.endDate >= todayStr
+  );
+
+  // Check if user has an approved early leave permit for today
+  const approvedEarlyPermit = leaveRequests?.find(
+    (r) =>
+      r.employeeId === employee.id &&
+      r.type === 'Izin Pulang Awal' &&
+      r.status === 'Disetujui' &&
+      r.startDate <= todayStr &&
+      r.endDate >= todayStr
+  );
+
+  // Calculate late minutes based on current time and shift workStartTime
+  const calculatedLateMinutes = calculateLateMinutes(nowTimeString, workStartTime);
+  const isPastLateTolerance = calculatedLateMinutes > officeConfig.lateToleranceMinutes;
+
+  // Calculate early minutes based on current time, shift workEndTime, and early check-in offset
+  const calculatedEarlyMinutes = calculateEarlyMinutes(nowTimeString, workEndTime, todayCheckInTime, workStartTime);
+
   // Calculate status
   const calculateAttendanceStatus = (): AttendanceStatus => {
     if (mode === 'out') return 'Hadir Tepat Waktu';
-
-    // Parse work start time + tolerance
-    const [startH, startM] = officeConfig.workStartTime.split(':').map(Number);
-    const deadlineMinutes = startH * 60 + startM + officeConfig.lateToleranceMinutes;
-
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    if (currentMinutes > deadlineMinutes) {
+    if (isPastLateTolerance) {
       return 'Terlambat';
     }
     return 'Hadir Tepat Waktu';
@@ -243,13 +277,28 @@ export default function AttendanceModal({
   const handleSubmitAttendance = () => {
     const finalPhoto = capturedPhoto || employee.avatarUrl;
     const status = calculateAttendanceStatus();
+    const finalLateMinutes = mode === 'in' && calculatedLateMinutes > 0 ? calculatedLateMinutes : undefined;
+    const finalEarlyMinutes = mode === 'out' && calculatedEarlyMinutes > 0 ? calculatedEarlyMinutes : undefined;
+
+    let finalNotes = notes.trim();
+    if (mode === 'in' && approvedLatePermit) {
+      const permitTag = `[Izin Terlambat Disetujui: ${calculatedLateMinutes > 0 ? `${calculatedLateMinutes} mnt` : `Est. ${approvedLatePermit.estimatedArrivalTime}`}]`;
+      finalNotes = finalNotes ? `${finalNotes} • ${permitTag}` : permitTag;
+    } else if (mode === 'out' && approvedEarlyPermit) {
+      const permitTag = `[Izin Pulang Awal Disetujui: ${calculatedEarlyMinutes > 0 ? `${calculatedEarlyMinutes} mnt` : `Est. ${approvedEarlyPermit.estimatedDepartureTime}`}]`;
+      finalNotes = finalNotes ? `${finalNotes} • ${permitTag}` : permitTag;
+    }
 
     onSubmit({
       type: attendanceType,
       photo: finalPhoto,
       location: geoData,
       status,
-      notes: notes.trim(),
+      notes: finalNotes,
+      lateMinutes: finalLateMinutes,
+      hasLatePermit: Boolean(approvedLatePermit),
+      earlyMinutes: finalEarlyMinutes,
+      hasEarlyPermit: Boolean(approvedEarlyPermit),
     });
   };
 
@@ -266,7 +315,7 @@ export default function AttendanceModal({
               {mode === 'in' ? 'Verifikasi Absen Masuk (Clock In)' : 'Verifikasi Absen Pulang (Clock Out)'}
             </h3>
             <p className="text-xs text-slate-500">
-              {employee.name} • {employee.nik}
+              {employee.name} • {employee.nik} • Shift: {workStartTime} - {workEndTime} WIB
             </p>
           </div>
           <button
@@ -281,6 +330,90 @@ export default function AttendanceModal({
 
         {/* Modal Body */}
         <div className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
+          
+          {/* Late calculation & Permit Banner for Clock In */}
+          {mode === 'in' && (
+            <div className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${
+              approvedLatePermit
+                ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                : calculatedLateMinutes > 0
+                ? 'bg-amber-50/60 border-amber-200 text-amber-900'
+                : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+            }`}>
+              <div className="flex items-center justify-between font-semibold">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  <span>Jadwal Jam Masuk: <strong className="font-mono">{workStartTime} WIB</strong></span>
+                </div>
+                <span className="font-mono text-[11px] text-slate-500">
+                  Waktu Saat Ini: {nowTimeString.slice(0, 5)} WIB
+                </span>
+              </div>
+
+              {calculatedLateMinutes > 0 ? (
+                <div className="flex items-center justify-between pt-1 border-t border-amber-200/60">
+                  <span className="font-medium text-amber-800">
+                    Keterlambatan Terhitung: <strong className="text-amber-900 font-bold font-mono">{calculatedLateMinutes} Menit</strong>
+                  </span>
+                  {approvedLatePermit ? (
+                    <span className="px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900 text-[11px] font-bold">
+                      ✓ Izin Terlambat Disetujui
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-amber-700">
+                      (Toleransi: {officeConfig.lateToleranceMinutes} mnt)
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="text-emerald-700 font-medium">
+                  ✓ Tepat Waktu (Sebelum batas {workStartTime} WIB)
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Early Departure calculation & Permit Banner for Clock Out */}
+          {mode === 'out' && (
+            <div className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${
+              approvedEarlyPermit
+                ? 'bg-indigo-50/80 border-indigo-300 text-indigo-950'
+                : calculatedEarlyMinutes > 0
+                ? 'bg-amber-50/60 border-amber-200 text-amber-900'
+                : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+            }`}>
+              <div className="flex items-center justify-between font-semibold">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-indigo-600" />
+                  <span>Jadwal Jam Pulang: <strong className="font-mono">{workEndTime} WIB</strong></span>
+                </div>
+                <span className="font-mono text-[11px] text-slate-500">
+                  Waktu Saat Ini: {nowTimeString.slice(0, 5)} WIB
+                </span>
+              </div>
+
+              {calculatedEarlyMinutes > 0 ? (
+                <div className="flex items-center justify-between pt-1 border-t border-indigo-200/60">
+                  <span className="font-medium text-indigo-900">
+                    Pulang Lebih Awal Terhitung: <strong className="text-indigo-950 font-bold font-mono">{calculatedEarlyMinutes} Menit</strong>
+                  </span>
+                  {approvedEarlyPermit ? (
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-200/80 text-indigo-900 text-[11px] font-bold">
+                      ✓ Izin Pulang Awal Disetujui
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-amber-700 font-medium">
+                      (Sebelum jam kerja berakhir)
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="text-emerald-700 font-medium">
+                  ✓ Selesai Sesuai Shift (Pukul {nowTimeString.slice(0, 5)} WIB)
+                </div>
+              )}
+            </div>
+          )}
           
           {/* Section 1: Selfie Camera Capture */}
           <div>
