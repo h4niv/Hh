@@ -26,7 +26,8 @@ import {
   Shield,
   ShieldAlert,
   CheckSquare,
-  AlertTriangle
+  AlertTriangle,
+  Fingerprint
 } from 'lucide-react';
 import { AttendanceRecord, Employee } from '../types';
 import { exportAttendanceToCSV } from '../utils/exportCsv';
@@ -51,6 +52,7 @@ interface HistoryTableProps {
   onEditAttendanceRecord?: (record: AttendanceRecord) => void;
   onDeleteAttendanceRecord?: (recordId: string) => void;
   onDeleteMultipleAttendanceRecords?: (recordIds: string[]) => void;
+  onOpenFingerprintModal?: () => void;
 }
 
 interface DeleteConfirmState {
@@ -73,6 +75,7 @@ export default function HistoryTable({
   onEditAttendanceRecord,
   onDeleteAttendanceRecord,
   onDeleteMultipleAttendanceRecords,
+  onOpenFingerprintModal,
 }: HistoryTableProps) {
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
   const isSuperadmin = currentEmployee.systemRole === 'superadmin';
@@ -329,6 +332,19 @@ export default function HistoryTable({
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>+ Input Presensi Manual</span>
+              </button>
+            )}
+
+            {isAdminOrSuper && onOpenFingerprintModal && (
+              <button
+                type="button"
+                id="btn-open-fingerprint-modal"
+                onClick={onOpenFingerprintModal}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                title="Koneksikan mesin fingerprint dan import log absensi"
+              >
+                <Fingerprint className="w-3.5 h-3.5" />
+                <span>Mesin Fingerprint</span>
               </button>
             )}
 

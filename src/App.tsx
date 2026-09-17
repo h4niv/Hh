@@ -42,6 +42,7 @@ import OfficeSettingsModal from './components/OfficeSettingsModal';
 import ManualAttendanceModal from './components/ManualAttendanceModal';
 import AutoAttendanceModal from './components/AutoAttendanceModal';
 import PermitRecapDashboard from './components/PermitRecapDashboard';
+import FingerprintModal from './components/FingerprintModal';
 
 export default function App() {
   // Persistence with localStorage
@@ -93,6 +94,7 @@ export default function App() {
   const [isOfficeModalOpen, setIsOfficeModalOpen] = useState<boolean>(false);
   const [isManualAttendanceModalOpen, setIsManualAttendanceModalOpen] = useState<boolean>(false);
   const [isAutoAttendanceModalOpen, setIsAutoAttendanceModalOpen] = useState<boolean>(false);
+  const [isFingerprintModalOpen, setIsFingerprintModalOpen] = useState<boolean>(false);
   const [editingAttendanceRecord, setEditingAttendanceRecord] = useState<AttendanceRecord | null>(null);
 
   // Notification Toast
@@ -783,6 +785,7 @@ export default function App() {
               onEditAttendanceRecord={(record) => handleOpenManualAttendance(record)}
               onDeleteAttendanceRecord={handleDeleteAttendanceRecord}
               onDeleteMultipleAttendanceRecords={handleDeleteMultipleAttendanceRecords}
+              onOpenFingerprintModal={() => setIsFingerprintModalOpen(true)}
             />
           </div>
         )}
@@ -888,6 +891,23 @@ export default function App() {
         officeConfig={officeConfig}
         currentEmployee={currentEmployee}
         onExecuteAutoAttendance={handleExecuteAutoAttendance}
+      />
+
+      {/* Fingerprint Machine Integration Modal */}
+      <FingerprintModal
+        isOpen={isFingerprintModalOpen}
+        onClose={() => setIsFingerprintModalOpen(false)}
+        officeConfig={officeConfig}
+        employees={employees}
+        attendanceRecords={attendanceRecords}
+        onAddOrUpdateRecords={(newRecs) => {
+          setAttendanceRecords((prev) => {
+            const map = new Map(prev.map(r => [`${r.employeeId}-${r.date}`, r]));
+            newRecs.forEach(r => map.set(`${r.employeeId}-${r.date}`, r));
+            return Array.from(map.values());
+          });
+          showToast(`Berhasil mengimpor dan menyinkronkan data presensi mesin fingerprint!`, 'success');
+        }}
       />
 
       {/* Footer */}
