@@ -63,6 +63,8 @@ export default function ManualAttendanceModal({
   const [selectedEmpId, setSelectedEmpId] = useState<string>(
     initialRecord?.employeeId || initialEmployeeId || (employees[0]?.id || '')
   );
+  const [singleEmpSearch, setSingleEmpSearch] = useState<string>('');
+  const [isSingleEmpPickerOpen, setIsSingleEmpPickerOpen] = useState<boolean>(false);
   const [selectedBulkEmpIds, setSelectedBulkEmpIds] = useState<string[]>(() =>
     employees.map((e) => e.id)
   );
@@ -135,6 +137,20 @@ export default function ManualAttendanceModal({
   const selectedEmployee = useMemo(() => {
     return employees.find((e) => e.id === selectedEmpId) || employees[0];
   }, [employees, selectedEmpId]);
+
+  // Filtered employees for single selection live search
+  const filteredSingleEmployees = useMemo(() => {
+    if (!singleEmpSearch.trim()) return employees;
+    const q = singleEmpSearch.toLowerCase().trim();
+    return employees.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.nik.toLowerCase().includes(q) ||
+        e.department.toLowerCase().includes(q) ||
+        e.role.toLowerCase().includes(q) ||
+        (e.systemRole || '').toLowerCase().includes(q)
+    );
+  }, [employees, singleEmpSearch]);
 
   // Filtered employees for bulk selection
   const filteredBulkEmployees = useMemo(() => {
@@ -402,13 +418,106 @@ export default function ManualAttendanceModal({
             </div>
           )}
 
-          {/* SINGLE MODE: Pilih 1 Karyawan */}
+          {/* SINGLE MODE: Pilih 1 Karyawan (Searchable & Selectable) */}
           {inputMode === 'single' && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-blue-600" />
-                <span>Pilih Karyawan <span className="text-rose-500">*</span></span>
-              </label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Pilih Karyawan <span className="text-rose-500">*</span></span>
+                </label>
+                {!isEditing && (
+                  <span className="text-[11px] text-slate-400">Ketik untuk mencari otomatis</span>
+                )}
+              </div>
+
+              {!isEditing && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                  <input
+                    type="text"
+                    id="manual-emp-search-input"
+                    value={singleEmpSearch}
+                    onChange={(e) => {
+                      setSingleEmpSearch(e.target.value);
+                      setIsSingleEmpPickerOpen(true);
+                    }}
+                    onFocus={() => setIsSingleEmpPickerOpen(true)}
+                    placeholder="Ketik manual nama, NIK, atau divisi..."
+                    className="w-full pl-8.5 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 placeholder-slate-400 shadow-2xs font-medium transition-all"
+                  />
+                  {singleEmpSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSingleEmpSearch('');
+                        setIsSingleEmpPickerOpen(false);
+                      }}
+                      className="absolute right-2.5 top-2 p-0.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+                      title="Hapus pencarian"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {/* Filtered Dropdown Popover */}
+                  {isSingleEmpPickerOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setIsSingleEmpPickerOpen(false)}
+                      />
+                      <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl shadow-xl border border-slate-200 z-40 max-h-56 overflow-y-auto divide-y divide-slate-100">
+                        {filteredSingleEmployees.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-slate-400">
+                            Tidak ditemukan karyawan dengan kata kunci "{singleEmpSearch}".
+                          </div>
+                        ) : (
+                          filteredSingleEmployees.map((emp) => {
+                            const isSelected = emp.id === selectedEmpId;
+                            return (
+                              <button
+                                key={emp.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedEmpId(emp.id);
+                                  setIsStatusManuallyOverridden(false);
+                                  setIsSingleEmpPickerOpen(false);
+                                  setSingleEmpSearch(emp.name);
+                                }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50 transition-colors cursor-pointer ${
+                                  isSelected ? 'bg-blue-50/70 border-l-3 border-blue-600' : ''
+                                }`}
+                              >
+                                <img
+                                  src={emp.avatarUrl}
+                                  alt={emp.name}
+                                  className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-slate-800'}`}>
+                                      {emp.name}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono">
+                                      {emp.nik}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 truncate">
+                                    {emp.department} • {emp.role} [{emp.systemRole}]
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Standard Select as fallback or when editing */}
               <select
                 id="manual-emp-select"
                 value={selectedEmpId}
@@ -416,6 +525,8 @@ export default function ManualAttendanceModal({
                 onChange={(e) => {
                   setSelectedEmpId(e.target.value);
                   setIsStatusManuallyOverridden(false);
+                  const found = employees.find(emp => emp.id === e.target.value);
+                  if (found) setSingleEmpSearch(found.name);
                 }}
                 className={`w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isEditing ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white text-slate-800'
@@ -430,8 +541,19 @@ export default function ManualAttendanceModal({
 
               {selectedEmployee && (
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs text-slate-600">
-                  <span>Shift Kerja: <strong>{selectedEmployee.shift.startTime} - {selectedEmployee.shift.endTime}</strong></span>
-                  <span>Toleransi: <strong>{selectedEmployee.shift.lateToleranceMinutes} mnt</strong></span>
+                  <div className="flex items-center gap-2">
+                    <img
+                      src={selectedEmployee.avatarUrl}
+                      alt={selectedEmployee.name}
+                      className="w-5 h-5 rounded object-cover"
+                    />
+                    <span><strong>{selectedEmployee.name}</strong> ({selectedEmployee.department})</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span>Shift: <strong>{selectedEmployee.shift.startTime} - {selectedEmployee.shift.endTime}</strong></span>
+                    <span className="text-slate-400">|</span>
+                    <span>Toleransi: <strong>{selectedEmployee.shift.lateToleranceMinutes} mnt</strong></span>
+                  </div>
                 </div>
               )}
             </div>

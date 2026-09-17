@@ -6,14 +6,17 @@ import {
   HeartPulse,
   UserX,
   Clock,
-  ShieldAlert
+  ShieldAlert,
+  LogOut
 } from 'lucide-react';
-import { AttendanceRecord, Employee } from '../types';
+import { AttendanceRecord, Employee, LeaveRequest } from '../types';
 
 interface DashboardStatsProps {
   employees: Employee[];
   todayRecords: AttendanceRecord[];
+  requests?: LeaveRequest[];
   onNavigateToEmployees?: () => void;
+  onNavigateToLeave?: () => void;
   onOpenManualAttendance?: () => void;
   isAdmin?: boolean;
 }
@@ -21,7 +24,9 @@ interface DashboardStatsProps {
 export default function DashboardStats({ 
   employees, 
   todayRecords, 
+  requests = [],
   onNavigateToEmployees,
+  onNavigateToLeave,
   onOpenManualAttendance,
   isAdmin = false,
 }: DashboardStatsProps) {
@@ -45,6 +50,11 @@ export default function DashboardStats({
 
   const totalPresent = presentOnTime + presentLate;
   const attendanceRate = totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100) : 0;
+
+  // Today's work hour permits (Izin Datang Terlambat & Izin Pulang Awal)
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayLatePermits = requests.filter(r => r.type === 'Izin Datang Terlambat' && r.startDate <= todayStr && r.endDate >= todayStr);
+  const todayEarlyPermits = requests.filter(r => r.type === 'Izin Pulang Awal' && r.startDate <= todayStr && r.endDate >= todayStr);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-4" id="dashboard-stats-grid">
@@ -105,16 +115,27 @@ export default function DashboardStats({
       </div>
 
       {/* Total Izin */}
-      <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-blue-200/80 shadow-2xs flex flex-col justify-between">
+      <div 
+        onClick={onNavigateToLeave}
+        className={`bg-white rounded-xl p-3.5 sm:p-4 border border-blue-200/80 shadow-2xs flex flex-col justify-between transition-all ${
+          onNavigateToLeave ? 'hover:border-blue-400 hover:shadow-xs cursor-pointer group' : ''
+        }`}
+        title="Klik untuk membuka Manajemen Izin & Cuti"
+      >
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-blue-800">Total Izin</span>
-          <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+          <span className="text-xs font-medium text-blue-800 group-hover:text-blue-900 transition-colors">Total Izin</span>
+          <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 flex items-center justify-center shrink-0 transition-colors">
             <CalendarCheck className="w-3.5 h-3.5" />
           </div>
         </div>
-        <div className="mt-2 text-2xl font-bold text-blue-950">{todayIzin}</div>
-        <div className="mt-2 flex items-center gap-1 text-[11px] text-blue-800">
-          Disetujui HRD
+        <div className="mt-2 text-2xl font-bold text-blue-950 group-hover:text-blue-900 transition-colors">{todayIzin}</div>
+        <div className="mt-2 flex items-center justify-between text-[11px] text-blue-800">
+          <span>Disetujui HRD</span>
+          {(todayLatePermits.length > 0 || todayEarlyPermits.length > 0) && (
+            <span className="text-[10px] font-semibold bg-blue-100 text-blue-900 px-1.5 py-0.2 rounded font-mono">
+              {todayLatePermits.length}T/{todayEarlyPermits.length}P
+            </span>
+          )}
         </div>
       </div>
 

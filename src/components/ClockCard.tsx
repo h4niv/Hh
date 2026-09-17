@@ -301,19 +301,39 @@ export default function ClockCard({
               </p>
             </div>
 
-            <div className="border-t border-slate-200/80 pt-3 flex items-center justify-between">
-              <div>
-                <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                  <CalendarCheck className="w-3.5 h-3.5 text-blue-600" />
-                  Sisa Kuota Cuti Tahunan
+            <div className="border-t border-slate-200/80 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <CalendarCheck className="w-3.5 h-3.5 text-blue-600" />
+                    Sisa Kuota Cuti Tahunan
+                  </div>
+                  <div className="text-xs text-slate-500">Tahun Periode 2026</div>
                 </div>
-                <div className="text-xs text-slate-500">Tahun Periode 2026</div>
+                <div className="text-right">
+                  <span className="text-lg font-bold text-blue-600 font-mono">
+                    {employee.remainingLeaveQuota}
+                  </span>
+                  <span className="text-xs text-slate-500 ml-1">Hari</span>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-lg font-bold text-blue-600 font-mono">
-                  {employee.remainingLeaveQuota}
-                </span>
-                <span className="text-xs text-slate-500 ml-1">Hari</span>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <div>
+                  <div className="text-xs font-semibold text-amber-900 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    Ketentuan Izin Terlambat
+                  </div>
+                  <div className="text-xs text-slate-500">Batas Kuota Bulanan</div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-amber-800 font-mono">
+                    Maks {officeConfig.maxLatePermitCountPerMonth ?? 3}x / bln
+                  </span>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    Total {officeConfig.maxLatePermitMinutesPerMonth ?? 120} mnt
+                  </div>
+                </div>
               </div>
             </div>
 

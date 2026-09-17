@@ -224,7 +224,7 @@ export default function OfficeSettingsModal({
 
             <div>
               <label className="block text-[11px] text-slate-500 mb-0.5">
-                Toleransi Keterlambatan (Menit)
+                Toleransi Keterlambatan Harian (Menit)
               </label>
               <input
                 type="number"
@@ -238,6 +238,134 @@ export default function OfficeSettingsModal({
               <p className="text-[10px] text-slate-400 mt-1">
                 Absen masuk setelah {formData.workStartTime} + {formData.lateToleranceMinutes} menit otomatis dikategorikan "Terlambat".
               </p>
+            </div>
+          </div>
+
+          {/* Ketentuan Izin Datang Terlambat Bulanan */}
+          <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200/80 space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-amber-600" />
+              <div>
+                <span className="text-xs font-bold text-amber-950 block">
+                  Ketentuan Izin Datang Terlambat (Bulanan)
+                </span>
+                <span className="text-[11px] text-amber-700">
+                  Batasan kuota frekuensi dan total durasi waktu izin terlambat bagi tiap karyawan selama 1 bulan
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Maksimal Berapa Kali / Bulan
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={formData.maxLatePermitCountPerMonth ?? 3}
+                    onChange={(e) => setFormData({ ...formData, maxLatePermitCountPerMonth: parseInt(e.target.value) || 1 })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-amber-500 pr-12 font-mono font-semibold"
+                    required
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                    Kali
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Contoh: 3 kali pengajuan izin terlambat per bulan kalender.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Maksimal Total Waktu / Bulan
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="15"
+                    max="600"
+                    step="5"
+                    value={formData.maxLatePermitMinutesPerMonth ?? 120}
+                    onChange={(e) => setFormData({ ...formData, maxLatePermitMinutesPerMonth: parseInt(e.target.value) || 15 })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-amber-500 pr-14 font-mono font-semibold"
+                    required
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                    Menit
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Contoh: 120 menit (setara 2 jam) total akumulasi izin terlambat.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Ketentuan Izin Pulang Awal Bulanan */}
+          <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-200/80 space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-indigo-600" />
+              <div>
+                <span className="text-xs font-bold text-indigo-950 block">
+                  Ketentuan Izin Pulang Lebih Awal (Bulanan)
+                </span>
+                <span className="text-[11px] text-indigo-700">
+                  Batasan kuota frekuensi dan total durasi izin meninggalkan kantor sebelum jam pulang kerja normal
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Maksimal Berapa Kali / Bulan
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={formData.maxEarlyLeaveCountPerMonth ?? 3}
+                    onChange={(e) => setFormData({ ...formData, maxEarlyLeaveCountPerMonth: parseInt(e.target.value) || 1 })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 pr-12 font-mono font-semibold"
+                    required
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                    Kali
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Contoh: 3 kali pengajuan izin pulang awal per bulan kalender.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Maksimal Total Waktu / Bulan
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="15"
+                    max="600"
+                    step="5"
+                    value={formData.maxEarlyLeaveMinutesPerMonth ?? 120}
+                    onChange={(e) => setFormData({ ...formData, maxEarlyLeaveMinutesPerMonth: parseInt(e.target.value) || 15 })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 pr-14 font-mono font-semibold"
+                    required
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                    Menit
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Contoh: 120 menit (setara 2 jam) akumulasi izin pulang awal.
+                </p>
+              </div>
             </div>
           </div>
 

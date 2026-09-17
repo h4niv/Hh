@@ -7,7 +7,14 @@ export type AttendanceStatus =
   | 'Sakit'
   | 'Alpha';
 
-export type LeaveType = 'Cuti Tahunan' | 'Izin Pribadi' | 'Sakit' | 'Cuti Melahirkan' | 'Keperluan Mendesak';
+export type LeaveType = 
+  | 'Cuti Tahunan' 
+  | 'Izin Pribadi' 
+  | 'Sakit' 
+  | 'Cuti Melahirkan' 
+  | 'Keperluan Mendesak'
+  | 'Izin Datang Terlambat'
+  | 'Izin Pulang Awal';
 
 export type LeaveStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 
@@ -74,6 +81,10 @@ export interface LeaveRequest {
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
   totalDays: number;
+  estimatedArrivalTime?: string;    // e.g. "09:30" for Izin Datang Terlambat
+  lateMinutes?: number;             // e.g. 60 (minutes late)
+  estimatedDepartureTime?: string;  // e.g. "15:30" for Izin Pulang Awal
+  earlyDepartureMinutes?: number;   // e.g. 120 (minutes earlier than shift end)
   reason: string;
   status: LeaveStatus;
   appliedAt: string;
@@ -90,6 +101,10 @@ export interface OfficeConfig {
   workStartTime: string;
   workEndTime: string;
   lateToleranceMinutes: number;
+  maxLatePermitCountPerMonth: number;     // Batas frekuensi izin terlambat per bulan (e.g. 3 kali)
+  maxLatePermitMinutesPerMonth: number;   // Batas total durasi izin terlambat per bulan (e.g. 120 menit)
+  maxEarlyLeaveCountPerMonth: number;     // Batas frekuensi izin pulang awal per bulan (e.g. 3 kali)
+  maxEarlyLeaveMinutesPerMonth: number;   // Batas total durasi izin pulang awal per bulan (e.g. 120 menit)
 }
 
 export interface FingerprintDevice {

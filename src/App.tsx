@@ -40,6 +40,7 @@ import AttendanceModal from './components/AttendanceModal';
 import OfficeSettingsModal from './components/OfficeSettingsModal';
 import ManualAttendanceModal from './components/ManualAttendanceModal';
 import AutoAttendanceModal from './components/AutoAttendanceModal';
+import PermitRecapDashboard from './components/PermitRecapDashboard';
 
 export default function App() {
   // Persistence with localStorage
@@ -256,27 +257,45 @@ export default function App() {
       })
     );
 
-    // If approved for today, also record as Izin/Sakit attendance record
+    // If approved for today, and it's a full-day leave (Cuti, Sakit, Izin Pribadi), record as Izin/Sakit attendance
     if (newStatus === 'Disetujui' && targetReq.startDate <= todayStr && targetReq.endDate >= todayStr) {
-      const attendanceStatus: AttendanceStatus = targetReq.type === 'Sakit' ? 'Sakit' : 'Izin';
-      const leaveAttendance: AttendanceRecord = {
-        id: `att-leave-${Date.now()}`,
-        employeeId: targetReq.employeeId,
-        employeeName: targetReq.employeeName,
-        employeeNik: targetReq.employeeNik,
-        department: targetReq.department,
-        date: todayStr,
-        type: 'WFH',
-        checkInTime: null,
-        checkOutTime: null,
-        status: attendanceStatus,
-        notes: `Pengajuan ${targetReq.type}: ${targetReq.reason}`,
-      };
+      if (targetReq.type === 'Izin Datang Terlambat' || targetReq.type === 'Izin Pulang Awal') {
+        // For partial-day permits (late arrival or early departure), append note to attendance record
+        setAttendanceRecords((prev) =>
+          prev.map((rec) => {
+            if (rec.employeeId === targetReq.employeeId && rec.date === todayStr) {
+              const noteText = targetReq.type === 'Izin Datang Terlambat'
+                ? `[Izin Terlambat Disetujui: Tiba ${targetReq.estimatedArrivalTime || '-'}, ${targetReq.lateMinutes || 0} mnt]`
+                : `[Izin Pulang Awal Disetujui: Pulang ${targetReq.estimatedDepartureTime || '-'}, Awal ${targetReq.earlyDepartureMinutes || 0} mnt]`;
+              return {
+                ...rec,
+                notes: rec.notes ? `${rec.notes} • ${noteText}` : noteText,
+              };
+            }
+            return rec;
+          })
+        );
+      } else {
+        const attendanceStatus: AttendanceStatus = targetReq.type === 'Sakit' ? 'Sakit' : 'Izin';
+        const leaveAttendance: AttendanceRecord = {
+          id: `att-leave-${Date.now()}`,
+          employeeId: targetReq.employeeId,
+          employeeName: targetReq.employeeName,
+          employeeNik: targetReq.employeeNik,
+          department: targetReq.department,
+          date: todayStr,
+          type: 'WFH',
+          checkInTime: null,
+          checkOutTime: null,
+          status: attendanceStatus,
+          notes: `Pengajuan ${targetReq.type}: ${targetReq.reason}`,
+        };
 
-      setAttendanceRecords((prev) => [
-        leaveAttendance,
-        ...prev.filter(r => !(r.employeeId === targetReq.employeeId && r.date === todayStr))
-      ]);
+        setAttendanceRecords((prev) => [
+          leaveAttendance,
+          ...prev.filter(r => !(r.employeeId === targetReq.employeeId && r.date === todayStr))
+        ]);
+      }
     }
 
     showToast(`Pengajuan ${targetReq.employeeName} telah ${newStatus.toLowerCase()}!`, newStatus === 'Disetujui' ? 'success' : 'info');
@@ -519,7 +538,9 @@ export default function App() {
             <DashboardStats 
               employees={employees} 
               todayRecords={todayRecords} 
+              requests={leaveRequests}
               onNavigateToEmployees={() => setActiveTab('karyawan')}
+              onNavigateToLeave={() => setActiveTab('cuti')}
               onOpenManualAttendance={() => handleOpenManualAttendance()}
               isAdmin={isAdminOrSuperadmin}
             />
@@ -540,6 +561,17 @@ export default function App() {
               onOpenAutoAttendanceModal={() => setIsAutoAttendanceModalOpen(true)}
               userDistanceToOffice={userDistanceToOffice}
               isWithinOfficeRadius={isWithinOfficeRadius}
+            />
+
+            {/* Rekapitulasi Izin Jam Kerja (Izin Datang Terlambat & Izin Pulang Awal) */}
+            <PermitRecapDashboard
+              requests={leaveRequests}
+              employees={employees}
+              currentEmployee={currentEmployee}
+              officeConfig={officeConfig}
+              onNavigateToLeaveManagement={() => setActiveTab('cuti')}
+              onOpenLeaveModal={() => setActiveTab('cuti')}
+              onUpdateStatus={handleUpdateLeaveStatus}
             />
 
             {/* Two Column Section: Realtime Attendance Feed + Quick Company Info */}
@@ -710,6 +742,7 @@ export default function App() {
               requests={leaveRequests}
               currentEmployee={currentEmployee}
               employees={employees}
+              officeConfig={officeConfig}
               onSubmitRequest={handleSubmitLeaveRequest}
               onUpdateStatus={handleUpdateLeaveStatus}
             />
