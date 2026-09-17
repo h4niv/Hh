@@ -14,7 +14,8 @@ export type LeaveType =
   | 'Cuti Melahirkan' 
   | 'Keperluan Mendesak'
   | 'Izin Datang Terlambat'
-  | 'Izin Pulang Awal';
+  | 'Izin Pulang Awal'
+  | 'Izin Dinas Luar';
 
 export type LeaveStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 

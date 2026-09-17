@@ -253,9 +253,17 @@ export default function ManualAttendanceModal({
       return;
     }
 
-    if (hasNoCheckIn && hasNoCheckOut && status !== 'Izin' && status !== 'Sakit' && status !== 'Alpha') {
-      setFormError('Jam masuk atau jam pulang harus diisi kecuali status Izin/Sakit/Alpha.');
+    if (attendanceType !== 'Dinas Luar' && hasNoCheckIn && hasNoCheckOut && status !== 'Izin' && status !== 'Sakit' && status !== 'Alpha') {
+      setFormError('Jam masuk atau jam pulang harus diisi kecuali status Izin/Sakit/Alpha/Dinas Luar.');
       return;
+    }
+
+    // For Dinas Luar with skipped times, provide default standard times if desired or keep null
+    let finalCheckIn = hasNoCheckIn ? null : `${checkInTime || '08:30'}:00`;
+    let finalCheckOut = hasNoCheckOut ? null : `${checkOutTime || '17:30'}:00`;
+    if (attendanceType === 'Dinas Luar' && hasNoCheckIn && hasNoCheckOut) {
+      finalCheckIn = '08:30:00';
+      finalCheckOut = '17:30:00';
     }
 
     // Check time sanity if both are provided
@@ -267,9 +275,6 @@ export default function ManualAttendanceModal({
         return;
       }
     }
-
-    const finalCheckIn = hasNoCheckIn ? null : `${checkInTime}:00`;
-    const finalCheckOut = hasNoCheckOut ? null : `${checkOutTime}:00`;
     const roleLabel = currentEmployee
       ? currentEmployee.systemRole === 'superadmin'
         ? 'Superadmin'
@@ -279,11 +284,14 @@ export default function ManualAttendanceModal({
     // Determine Location Address & Details
     const getRecordLocation = (fallbackTitle: string) => {
       if (attendanceType === 'Dinas Luar') {
+        const resolvedAddress = dinasLocation.trim() 
+          ? `Dinas Luar: ${dinasLocation.trim()}` 
+          : (initialRecord?.location?.address || 'Dinas Luar: Lokasi Penugasan Luar Kantor');
         return {
           latitude: -6.2088,
           longitude: 106.8456,
           accuracy: 15,
-          address: dinasLocation.trim() ? `Dinas Luar: ${dinasLocation.trim()}` : (initialRecord?.location?.address || 'Tugas Dinas Luar Kantor'),
+          address: resolvedAddress,
           distanceToOfficeMeters: 0,
           isWithinRadius: true,
         };
@@ -800,7 +808,21 @@ export default function ManualAttendanceModal({
                 <button
                   type="button"
                   id="btn-type-dinas-luar"
-                  onClick={() => setAttendanceType('Dinas Luar')}
+                  onClick={() => {
+                    setAttendanceType('Dinas Luar');
+                    if (status === 'Alpha' || status === 'Izin' || status === 'Sakit') {
+                      setStatus('Hadir Tepat Waktu');
+                      setIsStatusManuallyOverridden(false);
+                    }
+                    if (hasNoCheckIn || !checkInTime) {
+                      setCheckInTime('08:30');
+                      setHasNoCheckIn(false);
+                    }
+                    if (hasNoCheckOut || !checkOutTime) {
+                      setCheckOutTime('17:30');
+                      setHasNoCheckOut(false);
+                    }
+                  }}
                   className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                     attendanceType === 'Dinas Luar'
                       ? 'bg-amber-50/90 border-amber-600 text-amber-950 shadow-xs ring-2 ring-amber-500/20'

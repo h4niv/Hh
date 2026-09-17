@@ -278,6 +278,35 @@ export default function App() {
             return rec;
           })
         );
+      } else if (targetReq.type === 'Izin Dinas Luar') {
+        const dinasAttendance: AttendanceRecord = {
+          id: `att-dinas-${Date.now()}`,
+          employeeId: targetReq.employeeId,
+          employeeName: targetReq.employeeName,
+          employeeNik: targetReq.employeeNik,
+          department: targetReq.department,
+          date: todayStr,
+          type: 'Dinas Luar',
+          checkInTime: '08:30:00',
+          checkOutTime: '17:30:00',
+          status: 'Hadir Tepat Waktu',
+          location: {
+            latitude: -6.2088,
+            longitude: 106.8456,
+            accuracy: 10,
+            address: `Dinas Luar: ${targetReq.reason}`,
+            distanceToOfficeMeters: 0,
+            isWithinRadius: true,
+          },
+          notes: `[Tugas Dinas Luar Disetujui] ${targetReq.reason}`,
+          isManualEntry: true,
+          recordedBy: currentEmployee ? `${currentEmployee.name} (${currentEmployee.systemRole})` : 'HRD',
+        };
+
+        setAttendanceRecords((prev) => [
+          dinasAttendance,
+          ...prev.filter(r => !(r.employeeId === targetReq.employeeId && r.date === todayStr))
+        ]);
       } else {
         const attendanceStatus: AttendanceStatus = targetReq.type === 'Sakit' ? 'Sakit' : 'Izin';
         const leaveAttendance: AttendanceRecord = {

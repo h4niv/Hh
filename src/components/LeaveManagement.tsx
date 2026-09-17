@@ -15,7 +15,9 @@ import {
   User,
   Search,
   Sparkles,
-  Info
+  Info,
+  Plane,
+  MapPin
 } from 'lucide-react';
 import { LeaveRequest, LeaveType, Employee, OfficeConfig } from '../types';
 import { getTodayDateString } from '../utils/geo';
@@ -900,6 +902,8 @@ export default function LeaveManagement({
                             ? 'bg-amber-100 text-amber-800 border border-amber-300'
                             : isEarlyPermit
                             ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                            : req.type === 'Izin Dinas Luar'
+                            ? 'bg-amber-50 text-amber-900 border border-amber-300 font-bold'
                             : req.type === 'Cuti Tahunan'
                             ? 'bg-blue-50 text-blue-700 border border-blue-200'
                             : req.type === 'Sakit'
@@ -908,6 +912,7 @@ export default function LeaveManagement({
                         }`}>
                           {isLatePermit && <ClockAlert className="w-3 h-3 text-amber-600" />}
                           {isEarlyPermit && <LogOut className="w-3 h-3 text-indigo-600" />}
+                          {req.type === 'Izin Dinas Luar' && <Plane className="w-3 h-3 text-amber-600" />}
                           {req.type}
                         </span>
                       </td>
@@ -1165,6 +1170,7 @@ export default function LeaveManagement({
                 >
                   <option value="Izin Datang Terlambat">⏰ Izin Datang Terlambat (Batas Kuota Bulanan)</option>
                   <option value="Izin Pulang Awal">🏃 Izin Pulang Lebih Awal (Batas Kuota Bulanan)</option>
+                  <option value="Izin Dinas Luar">✈️ Izin Dinas Luar / Tugas Luar Kantor</option>
                   <option value="Cuti Tahunan">🏖️ Cuti Tahunan (Mengurangi Kuota)</option>
                   <option value="Sakit">🏥 Sakit (Surat Dokter)</option>
                   <option value="Izin Pribadi">📋 Izin Pribadi / Keperluan Mendesak</option>
