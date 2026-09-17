@@ -5,6 +5,11 @@ import {
   Calendar, 
   User, 
   Building2, 
+  Home,
+  MapPin,
+  Plane,
+  Car,
+  Navigation,
   AlertCircle, 
   CheckCircle2, 
   FileText, 
@@ -16,7 +21,8 @@ import {
   Square,
   Search,
   ShieldCheck,
-  UserX
+  UserX,
+  Sparkles
 } from 'lucide-react';
 import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee } from '../types';
 
@@ -33,14 +39,23 @@ interface ManualAttendanceModalProps {
 }
 
 const QUICK_REASONS = [
+  'Dinas luar kota sejak pagi',
+  'Kunjungan klien / rekanan bisnis luar',
+  'Inspeksi lapangan / site visit proyek',
+  'Workshop / pelatihan / seminar dinas',
   'Lupa melakukan presensi',
   'Kendala sinyal / GPS perangkat',
+  'Tugas lembur atas instruksi atasan',
   'Tidak hadir tanpa keterangan (Alpha)',
   'Mangkir / tidak ada konfirmasi (Alpha)',
-  'Meeting mendadak di luar kantor',
-  'Dinas luar kota sejak pagi',
-  'Perangkat HP tertinggal / rusak',
-  'Tugas lembur atas instruksi atasan',
+];
+
+const DINAS_PRESETS = [
+  { label: '✈️ Dinas Luar Kota', location: 'Dinas Luar Kota (Kunjungan Wilayah)', note: 'Penugasan dinas luar kota atas instruksi manajemen' },
+  { label: '🏢 Kunjungan Klien / Rekanan', location: 'Kantor Klien / Mitra Bisnis', note: 'Meeting dan koordinasi langsung dengan rekanan bisnis' },
+  { label: '🔍 Site Visit / Proyek Lapangan', location: 'Lokasi Proyek / Site Lapangan', note: 'Supervisi dan inspeksi operasional di lapangan' },
+  { label: '🎓 Workshop / Pelatihan', location: 'Pusat Pelatihan / Hotel Penyelenggara', note: 'Mengikuti agenda pelatihan / sertifikasi dinas' },
+  { label: '🤝 Rapat Koordinasi Instansi', location: 'Kantor Pemerintahan / Instansi Terkait', note: 'Menghadiri rapat koordinasi kedinasan' },
 ];
 
 export default function ManualAttendanceModal({
@@ -77,6 +92,13 @@ export default function ManualAttendanceModal({
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(
     initialRecord?.type || 'WFO'
   );
+  const [dinasLocation, setDinasLocation] = useState<string>(() => {
+    if (initialRecord?.type === 'Dinas Luar' && initialRecord.location?.address) {
+      return initialRecord.location.address.replace(/^Dinas Luar:\s*/i, '');
+    }
+    return '';
+  });
+  const [dinasSptNumber, setDinasSptNumber] = useState<string>('');
   const [checkInTime, setCheckInTime] = useState<string>(
     initialRecord?.checkInTime ? initialRecord.checkInTime.slice(0, 5) : '08:30'
   );
@@ -111,6 +133,12 @@ export default function ManualAttendanceModal({
       setSelectedEmpId(initialRecord.employeeId);
       setDate(initialRecord.date);
       setAttendanceType(initialRecord.type);
+      setDinasLocation(
+        initialRecord.type === 'Dinas Luar' && initialRecord.location?.address
+          ? initialRecord.location.address.replace(/^Dinas Luar:\s*/i, '')
+          : ''
+      );
+      setDinasSptNumber('');
       setCheckInTime(initialRecord.checkInTime ? initialRecord.checkInTime.slice(0, 5) : '08:30');
       setCheckOutTime(initialRecord.checkOutTime ? initialRecord.checkOutTime.slice(0, 5) : '17:30');
       setHasNoCheckIn(!initialRecord.checkInTime);
@@ -123,6 +151,8 @@ export default function ManualAttendanceModal({
       setSelectedBulkEmpIds(employees.map((e) => e.id));
       setDate(new Date().toISOString().slice(0, 10));
       setAttendanceType('WFO');
+      setDinasLocation('');
+      setDinasSptNumber('');
       setCheckInTime('08:30');
       setCheckOutTime('17:30');
       setHasNoCheckIn(false);
@@ -246,6 +276,53 @@ export default function ManualAttendanceModal({
         : 'Administrator'
       : 'Administrator';
 
+    // Determine Location Address & Details
+    const getRecordLocation = (fallbackTitle: string) => {
+      if (attendanceType === 'Dinas Luar') {
+        return {
+          latitude: -6.2088,
+          longitude: 106.8456,
+          accuracy: 15,
+          address: dinasLocation.trim() ? `Dinas Luar: ${dinasLocation.trim()}` : (initialRecord?.location?.address || 'Tugas Dinas Luar Kantor'),
+          distanceToOfficeMeters: 0,
+          isWithinRadius: true,
+        };
+      }
+      if (attendanceType === 'WFH') {
+        return {
+          latitude: -6.2500,
+          longitude: 106.8000,
+          accuracy: 12,
+          address: 'Work From Home (Kediaman Karyawan)',
+          distanceToOfficeMeters: 0,
+          isWithinRadius: true,
+        };
+      }
+      return initialRecord?.location || {
+        latitude: -6.2255,
+        longitude: 106.8095,
+        accuracy: 10,
+        address: fallbackTitle,
+        distanceToOfficeMeters: 0,
+        isWithinRadius: true,
+      };
+    };
+
+    // Determine Formatted Notes
+    const getRecordNotes = (defaultNote: string) => {
+      let finalNote = notes.trim();
+      if (!finalNote) {
+        if (attendanceType === 'Dinas Luar') {
+          finalNote = `Tugas Dinas Luar${dinasLocation.trim() ? `: ${dinasLocation.trim()}` : ''}${dinasSptNumber.trim() ? ` (SPT: ${dinasSptNumber.trim()})` : ''}`;
+        } else {
+          finalNote = defaultNote;
+        }
+      } else if (attendanceType === 'Dinas Luar' && dinasSptNumber.trim() && !finalNote.includes(dinasSptNumber.trim())) {
+        finalNote = `${finalNote} [SPT: ${dinasSptNumber.trim()}]`;
+      }
+      return finalNote;
+    };
+
     // Bulk Mode Submission
     if (inputMode === 'bulk' && !isEditing) {
       if (selectedBulkEmpIds.length === 0) {
@@ -267,17 +344,8 @@ export default function ManualAttendanceModal({
         status,
         checkInPhoto: emp.avatarUrl,
         checkOutPhoto: emp.avatarUrl,
-        location: {
-          latitude: -6.2255,
-          longitude: 106.8095,
-          accuracy: 10,
-          address: 'Input Manual Administrator (Semua User)',
-          distanceToOfficeMeters: 0,
-          isWithinRadius: true,
-        },
-        notes: notes.trim()
-          ? notes.trim()
-          : `Input manual massal oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`,
+        location: getRecordLocation('Input Manual Administrator (Semua User)'),
+        notes: getRecordNotes(`Input manual massal oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`),
         isManualEntry: true,
         recordedBy: currentEmployee ? `${currentEmployee.name} (${roleLabel})` : undefined,
       }));
@@ -285,7 +353,7 @@ export default function ManualAttendanceModal({
       if (onSaveBulk) {
         onSaveBulk(
           recordsToSave,
-          `Berhasil mencatat presensi manual untuk ${recordsToSave.length} karyawan pada tanggal ${date}!`
+          `Berhasil mencatat presensi manual (${attendanceType}) untuk ${recordsToSave.length} karyawan pada tanggal ${date}!`
         );
       } else {
         recordsToSave.forEach((r) => onSave(r, true));
@@ -313,17 +381,8 @@ export default function ManualAttendanceModal({
       status,
       checkInPhoto: initialRecord?.checkInPhoto || selectedEmployee.avatarUrl,
       checkOutPhoto: initialRecord?.checkOutPhoto || selectedEmployee.avatarUrl,
-      location: initialRecord?.location || {
-        latitude: -6.2255,
-        longitude: 106.8095,
-        accuracy: 10,
-        address: 'Input Manual Administrator',
-        distanceToOfficeMeters: 0,
-        isWithinRadius: true,
-      },
-      notes: notes.trim() 
-        ? notes.trim() 
-        : (isEditing ? 'Disesuaikan secara manual' : `Diinput manual oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`),
+      location: getRecordLocation('Input Manual Administrator'),
+      notes: getRecordNotes(isEditing ? 'Disesuaikan secara manual' : `Diinput manual oleh ${roleLabel} (${currentEmployee?.name || 'Admin'})`),
       isManualEntry: true,
       recordedBy: currentEmployee ? `${currentEmployee.name} (${roleLabel})` : undefined,
     };
@@ -655,11 +714,11 @@ export default function ManualAttendanceModal({
           )}
 
           {/* Tanggal Presensi & Tipe Kehadiran */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="space-y-3.5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                <span>Tanggal <span className="text-rose-500">*</span></span>
+                <span>Tanggal Presensi <span className="text-rose-500">*</span></span>
               </label>
               <input
                 type="date"
@@ -672,22 +731,185 @@ export default function ManualAttendanceModal({
               />
             </div>
 
+            {/* Tipe Kehadiran - 3 Visual Cards */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Briefcase className="w-3.5 h-3.5 text-blue-600" />
-                <span>Tipe Kehadiran</span>
+              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Tipe Kehadiran</span>
+                </span>
+                <span className="text-[11px] font-normal text-slate-400">Pilih salah satu metode kerja</span>
               </label>
-              <select
-                id="manual-type-select"
-                value={attendanceType}
-                onChange={(e) => setAttendanceType(e.target.value as AttendanceType)}
-                className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="WFO">WFO (Work From Office / Kantor)</option>
-                <option value="WFH">WFH (Work From Home / Rumah)</option>
-                <option value="Dinas Luar">Dinas Luar (Perjalanan Dinas)</option>
-              </select>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* WFO Card */}
+                <button
+                  type="button"
+                  id="btn-type-wfo"
+                  onClick={() => setAttendanceType('WFO')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    attendanceType === 'WFO'
+                      ? 'bg-blue-50/80 border-blue-600 text-blue-900 shadow-xs ring-2 ring-blue-500/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                      attendanceType === 'WFO' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    {attendanceType === 'WFO' && (
+                      <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">WFO (Kantor)</div>
+                    <div className="text-[10px] text-slate-500 leading-tight">Work From Office</div>
+                  </div>
+                </button>
+
+                {/* WFH Card */}
+                <button
+                  type="button"
+                  id="btn-type-wfh"
+                  onClick={() => setAttendanceType('WFH')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    attendanceType === 'WFH'
+                      ? 'bg-purple-50/80 border-purple-600 text-purple-900 shadow-xs ring-2 ring-purple-500/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                      attendanceType === 'WFH' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      <Home className="w-4 h-4" />
+                    </div>
+                    {attendanceType === 'WFH' && (
+                      <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">WFH (Rumah)</div>
+                    <div className="text-[10px] text-slate-500 leading-tight">Work From Home</div>
+                  </div>
+                </button>
+
+                {/* Dinas Luar Card */}
+                <button
+                  type="button"
+                  id="btn-type-dinas-luar"
+                  onClick={() => setAttendanceType('Dinas Luar')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    attendanceType === 'Dinas Luar'
+                      ? 'bg-amber-50/90 border-amber-600 text-amber-950 shadow-xs ring-2 ring-amber-500/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                      attendanceType === 'Dinas Luar' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      <Plane className="w-4 h-4" />
+                    </div>
+                    {attendanceType === 'Dinas Luar' && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-200 text-amber-900">
+                        Aktif
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold flex items-center gap-1">
+                      <span>Dinas Luar</span>
+                      <span className="text-[9px] px-1 rounded bg-amber-100 text-amber-800 font-normal">Tugas</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 leading-tight">Perjalanan & tugas luar</div>
+                  </div>
+                </button>
+              </div>
             </div>
+
+            {/* Sub-form Detail Dinas Luar (Muncul saat memilih Dinas Luar) */}
+            {attendanceType === 'Dinas Luar' && (
+              <div className="p-4 rounded-xl bg-linear-to-br from-amber-50/80 to-amber-100/40 border border-amber-200/90 space-y-3.5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 rounded-lg bg-amber-200/80 text-amber-900">
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-950">Detail Penugasan Dinas Luar</h4>
+                      <p className="text-[11px] text-amber-800/90">
+                        Lokasi dinas akan dicatat otomatis pada data presensi karyawan
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                    ✈️ Dinas Luar
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Lokasi / Instansi Tujuan Dinas */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-amber-700" />
+                      <span>Lokasi / Kota / Instansi Tujuan <span className="text-rose-500">*</span></span>
+                    </label>
+                    <input
+                      type="text"
+                      id="dinas-location-input"
+                      value={dinasLocation}
+                      onChange={(e) => setDinasLocation(e.target.value)}
+                      placeholder="Misal: PT Telkom Regional 2 Jakarta / Kemenkeu RI"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-amber-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs font-medium"
+                    />
+                  </div>
+
+                  {/* No. SPT / Surat Perintah Tugas */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
+                      <FileText className="w-3 h-3 text-amber-700" />
+                      <span>Nomor Surat Tugas / SPT (Opsional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="dinas-spt-input"
+                      value={dinasSptNumber}
+                      onChange={(e) => setDinasSptNumber(e.target.value)}
+                      placeholder="Misal: ST/084/HRD/IX/2026"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-amber-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Preset Cepat Dinas Luar */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-600" />
+                    <span>Preset Cepat Jenis Dinas Luar:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DINAS_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setDinasLocation(preset.location);
+                          if (!notes) {
+                            setNotes(preset.note);
+                          }
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white text-amber-900 font-semibold border border-amber-200/90 shadow-2xs transition-all hover:border-amber-400 cursor-pointer flex items-center gap-1"
+                      >
+                        <span>{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Jam Masuk & Jam Pulang */}
