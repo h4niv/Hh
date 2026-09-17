@@ -18,6 +18,7 @@ import {
   Employee, 
   AttendanceRecord, 
   LeaveRequest, 
+  LeaveType,
   OfficeConfig,
   AttendanceType,
   GeoLocationData,
@@ -83,6 +84,8 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan'>('presensi');
   const [isAddEmployeeModalDirectOpen, setIsAddEmployeeModalDirectOpen] = useState<boolean>(false);
+  const [leaveModalInitialType, setLeaveModalInitialType] = useState<LeaveType | null>(null);
+  const [isLeaveModalAutoOpen, setIsLeaveModalAutoOpen] = useState<boolean>(false);
   
   // Modals
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState<boolean>(false);
@@ -570,7 +573,13 @@ export default function App() {
               currentEmployee={currentEmployee}
               officeConfig={officeConfig}
               onNavigateToLeaveManagement={() => setActiveTab('cuti')}
-              onOpenLeaveModal={() => setActiveTab('cuti')}
+              onOpenLeaveModal={(type) => {
+                setActiveTab('cuti');
+                if (type) {
+                  setLeaveModalInitialType(type);
+                }
+                setIsLeaveModalAutoOpen(true);
+              }}
               onUpdateStatus={handleUpdateLeaveStatus}
             />
 
@@ -745,6 +754,12 @@ export default function App() {
               officeConfig={officeConfig}
               onSubmitRequest={handleSubmitLeaveRequest}
               onUpdateStatus={handleUpdateLeaveStatus}
+              initialOpenModal={isLeaveModalAutoOpen}
+              initialLeaveType={leaveModalInitialType || undefined}
+              onClearInitialModal={() => {
+                setIsLeaveModalAutoOpen(false);
+                setLeaveModalInitialType(null);
+              }}
             />
           </div>
         )}

@@ -1,4 +1,4 @@
-import { useState, useMemo, FormEvent } from 'react';
+import { useState, useMemo, FormEvent, useEffect, useRef } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -11,7 +11,11 @@ import {
   LogOut,
   ShieldAlert, 
   CalendarClock,
-  ClockAlert
+  ClockAlert,
+  User,
+  Search,
+  Sparkles,
+  Info
 } from 'lucide-react';
 import { LeaveRequest, LeaveType, Employee, OfficeConfig } from '../types';
 import { getTodayDateString } from '../utils/geo';
@@ -23,7 +27,46 @@ interface LeaveManagementProps {
   officeConfig?: OfficeConfig;
   onSubmitRequest: (newReq: Omit<LeaveRequest, 'id' | 'appliedAt' | 'status'>) => void;
   onUpdateStatus: (requestId: string, newStatus: 'Disetujui' | 'Ditolak') => void;
+  initialOpenModal?: boolean;
+  initialLeaveType?: LeaveType;
+  onClearInitialModal?: () => void;
 }
+
+// Time calculation helpers
+const addMinutesToTime = (timeStr: string, minutesToAdd: number): string => {
+  try {
+    const [h, m] = (timeStr || '08:30').split(':').map(Number);
+    const totalMinutes = (h * 60 + m + minutesToAdd + 1440) % 1440;
+    const newH = Math.floor(totalMinutes / 60);
+    const newM = totalMinutes % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+  } catch {
+    return '09:00';
+  }
+};
+
+const subtractMinutesFromTime = (timeStr: string, minutesToSubtract: number): string => {
+  try {
+    const [h, m] = (timeStr || '17:30').split(':').map(Number);
+    let totalMinutes = h * 60 + m - minutesToSubtract;
+    if (totalMinutes < 0) totalMinutes += 1440;
+    const newH = Math.floor(totalMinutes / 60);
+    const newM = totalMinutes % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+  } catch {
+    return '16:30';
+  }
+};
+
+const getTimeDifferenceMinutes = (t1: string, t2: string): number => {
+  try {
+    const [h1, m1] = (t1 || '08:30').split(':').map(Number);
+    const [h2, m2] = (t2 || '09:00').split(':').map(Number);
+    return (h2 * 60 + m2) - (h1 * 60 + m1);
+  } catch {
+    return 0;
+  }
+};
 
 export default function LeaveManagement({
   requests,
@@ -32,6 +75,9 @@ export default function LeaveManagement({
   officeConfig,
   onSubmitRequest,
   onUpdateStatus,
+  initialOpenModal,
+  initialLeaveType,
+  onClearInitialModal,
 }: LeaveManagementProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterTab, setFilterTab] = useState<'all' | 'cuti_sakit' | 'terlambat' | 'pulang_awal' | 'pending'>('all');
@@ -39,6 +85,12 @@ export default function LeaveManagement({
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     return new Date().toISOString().slice(0, 7); // e.g. "2026-09"
   });
+
+  // Target Employee State for Form
+  const [targetEmpId, setTargetEmpId] = useState<string>(currentEmployee.id);
+  const [targetEmpSearch, setTargetEmpSearch] = useState<string>('');
+  const [isTargetEmpPickerOpen, setIsTargetEmpPickerOpen] = useState<boolean>(false);
+  const targetEmpInputRef = useRef<HTMLInputElement>(null);
 
   // Modal Form states
   const [leaveType, setLeaveType] = useState<LeaveType>('Izin Datang Terlambat');
@@ -55,6 +107,25 @@ export default function LeaveManagement({
 
   const [reason, setReason] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSpecialExemptionChecked, setIsSpecialExemptionChecked] = useState<boolean>(false);
+
+  // Selected Target Employee
+  const targetEmployee = useMemo(() => {
+    return employees.find((e) => e.id === targetEmpId) || currentEmployee;
+  }, [employees, targetEmpId, currentEmployee]);
+
+  // Filtered employees for search
+  const filteredEmployeesForModal = useMemo(() => {
+    if (!targetEmpSearch.trim()) return employees;
+    const q = targetEmpSearch.toLowerCase().trim();
+    return employees.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.nik.toLowerCase().includes(q) ||
+        e.department.toLowerCase().includes(q) ||
+        e.role.toLowerCase().includes(q)
+    );
+  }, [employees, targetEmpSearch]);
 
   // Fallback defaults for limits if not yet set in officeConfig
   const maxLateCount = officeConfig?.maxLatePermitCountPerMonth ?? 3;
@@ -62,8 +133,38 @@ export default function LeaveManagement({
   const maxEarlyCount = officeConfig?.maxEarlyLeaveCountPerMonth ?? 3;
   const maxEarlyMinutes = officeConfig?.maxEarlyLeaveMinutesPerMonth ?? 120;
 
-  const workStartTime = currentEmployee.shift?.startTime || officeConfig?.workStartTime || '08:30';
-  const workEndTime = currentEmployee.shift?.endTime || officeConfig?.workEndTime || '17:30';
+  const workStartTime = targetEmployee.shift?.startTime || officeConfig?.workStartTime || '08:30';
+  const workEndTime = targetEmployee.shift?.endTime || officeConfig?.workEndTime || '17:30';
+
+  // Handle initial modal open trigger from App / Dashboard
+  useEffect(() => {
+    if (initialOpenModal) {
+      if (initialLeaveType) {
+        setLeaveType(initialLeaveType);
+      }
+      setStartDate(getTodayDateString());
+      setEndDate(getTodayDateString());
+      setTargetEmpId(currentEmployee.id);
+      setTargetEmpSearch(currentEmployee.name);
+      setFormError(null);
+      setIsSpecialExemptionChecked(false);
+      setReason('');
+
+      // Auto configure default times
+      if (initialLeaveType === 'Izin Datang Terlambat' || (!initialLeaveType && leaveType === 'Izin Datang Terlambat')) {
+        const defaultLateMinutes = 30;
+        setLateMinutesInput(defaultLateMinutes);
+        setEstimatedArrivalTime(addMinutesToTime(workStartTime, defaultLateMinutes));
+      } else if (initialLeaveType === 'Izin Pulang Awal') {
+        const defaultEarlyMinutes = 60;
+        setEarlyMinutesInput(defaultEarlyMinutes);
+        setEstimatedDepartureTime(subtractMinutesFromTime(workEndTime, defaultEarlyMinutes));
+      }
+
+      setIsModalOpen(true);
+      if (onClearInitialModal) onClearInitialModal();
+    }
+  }, [initialOpenModal, initialLeaveType, currentEmployee, workStartTime, workEndTime, onClearInitialModal, leaveType]);
 
   // Calculate days between start and end
   const calculateDays = (start: string, end: string) => {
@@ -81,18 +182,16 @@ export default function LeaveManagement({
   const totalDays = calculateDays(startDate, endDate);
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
 
-  // Calculate monthly stats for Izin Datang Terlambat for current employee
-  const currentMonthStr = selectedMonth; // e.g. "2026-09"
-
+  // Monthly stats for Izin Datang Terlambat for selected target employee
   const employeeMonthlyLateRequests = useMemo(() => {
     return requests.filter((r) => {
-      const isThisEmp = r.employeeId === currentEmployee.id;
+      const isThisEmp = r.employeeId === targetEmployee.id;
       const isLateType = r.type === 'Izin Datang Terlambat';
-      const isThisMonth = r.startDate.startsWith(currentMonthStr);
+      const isThisMonth = r.startDate.startsWith(selectedMonth);
       const isNotRejected = r.status !== 'Ditolak';
       return isThisEmp && isLateType && isThisMonth && isNotRejected;
     });
-  }, [requests, currentEmployee.id, currentMonthStr]);
+  }, [requests, targetEmployee.id, selectedMonth]);
 
   const usedLateCount = employeeMonthlyLateRequests.length;
   const usedLateMinutes = employeeMonthlyLateRequests.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
@@ -101,16 +200,16 @@ export default function LeaveManagement({
   const percentLateCountUsed = Math.min(100, Math.round((usedLateCount / maxLateCount) * 100));
   const percentLateMinutesUsed = Math.min(100, Math.round((usedLateMinutes / maxLateMinutes) * 100));
 
-  // Calculate monthly stats for Izin Pulang Awal for current employee
+  // Monthly stats for Izin Pulang Awal for selected target employee
   const employeeMonthlyEarlyRequests = useMemo(() => {
     return requests.filter((r) => {
-      const isThisEmp = r.employeeId === currentEmployee.id;
+      const isThisEmp = r.employeeId === targetEmployee.id;
       const isEarlyType = r.type === 'Izin Pulang Awal';
-      const isThisMonth = r.startDate.startsWith(currentMonthStr);
+      const isThisMonth = r.startDate.startsWith(selectedMonth);
       const isNotRejected = r.status !== 'Ditolak';
       return isThisEmp && isEarlyType && isThisMonth && isNotRejected;
     });
-  }, [requests, currentEmployee.id, currentMonthStr]);
+  }, [requests, targetEmployee.id, selectedMonth]);
 
   const usedEarlyCount = employeeMonthlyEarlyRequests.length;
   const usedEarlyMinutes = employeeMonthlyEarlyRequests.reduce((sum, r) => sum + (r.earlyDepartureMinutes || 0), 0);
@@ -119,34 +218,38 @@ export default function LeaveManagement({
   const percentEarlyCountUsed = Math.min(100, Math.round((usedEarlyCount / maxEarlyCount) * 100));
   const percentEarlyMinutesUsed = Math.min(100, Math.round((usedEarlyMinutes / maxEarlyMinutes) * 100));
 
-  // Auto calculate late minutes when estimated arrival time changes
+  // Handle Late input changes
   const handleEstimatedArrivalChange = (arrivalTimeStr: string) => {
     setEstimatedArrivalTime(arrivalTimeStr);
-    try {
-      const [startH, startM] = workStartTime.split(':').map(Number);
-      const [arrH, arrM] = arrivalTimeStr.split(':').map(Number);
-      const startTotal = startH * 60 + startM;
-      const arrTotal = arrH * 60 + arrM;
-      const diff = arrTotal - startTotal;
-      setLateMinutesInput(diff > 0 ? diff : 0);
-    } catch {
-      // fallback
+    const diff = getTimeDifferenceMinutes(workStartTime, arrivalTimeStr);
+    if (diff > 0) {
+      setLateMinutesInput(diff);
+    } else {
+      setLateMinutesInput(15);
     }
   };
 
-  // Auto calculate early departure minutes when departure time changes
+  const handleLateMinutesNumberChange = (mins: number) => {
+    const validMins = Math.max(1, isNaN(mins) ? 1 : mins);
+    setLateMinutesInput(validMins);
+    setEstimatedArrivalTime(addMinutesToTime(workStartTime, validMins));
+  };
+
+  // Handle Early Departure input changes
   const handleEstimatedDepartureChange = (departureTimeStr: string) => {
     setEstimatedDepartureTime(departureTimeStr);
-    try {
-      const [endH, endM] = workEndTime.split(':').map(Number);
-      const [depH, depM] = departureTimeStr.split(':').map(Number);
-      const endTotal = endH * 60 + endM;
-      const depTotal = depH * 60 + depM;
-      const diff = endTotal - depTotal;
-      setEarlyMinutesInput(diff > 0 ? diff : 0);
-    } catch {
-      // fallback
+    const diff = getTimeDifferenceMinutes(departureTimeStr, workEndTime);
+    if (diff > 0) {
+      setEarlyMinutesInput(diff);
+    } else {
+      setEarlyMinutesInput(30);
     }
+  };
+
+  const handleEarlyMinutesNumberChange = (mins: number) => {
+    const validMins = Math.max(1, isNaN(mins) ? 1 : mins);
+    setEarlyMinutesInput(validMins);
+    setEstimatedDepartureTime(subtractMinutesFromTime(workEndTime, validMins));
   };
 
   // Filtered requests list
@@ -186,12 +289,12 @@ export default function LeaveManagement({
     setFormError(null);
 
     if (!reason.trim()) {
-      setFormError('Mohon isi alasan pengajuan');
+      setFormError('Mohon isi alasan atau keterangan lengkap pengajuan.');
       return;
     }
 
-    if (leaveType === 'Cuti Tahunan' && totalDays > currentEmployee.remainingLeaveQuota) {
-      setFormError(`Sisa kuota cuti tahunan Anda (${currentEmployee.remainingLeaveQuota} hari) tidak mencukupi untuk ${totalDays} hari.`);
+    if (leaveType === 'Cuti Tahunan' && totalDays > targetEmployee.remainingLeaveQuota) {
+      setFormError(`Sisa kuota cuti tahunan (${targetEmployee.remainingLeaveQuota} hari) tidak mencukupi untuk ${totalDays} hari.`);
       return;
     }
 
@@ -201,44 +304,45 @@ export default function LeaveManagement({
         setFormError('Pilih tanggal izin datang terlambat.');
         return;
       }
+      if (!estimatedArrivalTime) {
+        setFormError('Pilih estimasi jam tiba di kantor.');
+        return;
+      }
       if (lateMinutesInput <= 0) {
-        setFormError('Durasi keterlambatan harus lebih dari 0 menit (estimasi jam tiba harus setelah jam mulai kerja).');
+        setFormError('Durasi keterlambatan harus minimal 1 menit.');
         return;
       }
 
       const projectedCount = usedLateCount + 1;
       const projectedMinutes = usedLateMinutes + lateMinutesInput;
+      const isOverQuota = projectedCount > maxLateCount || projectedMinutes > maxLateMinutes;
 
-      if (projectedCount > maxLateCount) {
+      if (isOverQuota && !isSpecialExemptionChecked && !isAdminOrSuper) {
         setFormError(
-          `Pengajuan ditolak: Kuota frekuensi izin terlambat bulan ini sudah mencapai batas maksimal (${maxLateCount} kali). Hubungi HRD untuk permohonan khusus.`
-        );
-        return;
-      }
-
-      if (projectedMinutes > maxLateMinutes) {
-        setFormError(
-          `Pengajuan ditolak: Total durasi izin terlambat bulan ini akan menjadi ${projectedMinutes} menit, melebihi batas maksimal kantor (${maxLateMinutes} menit). Sisa durasi yang dapat diajukan: ${remainingLateMinutes} menit.`
+          `Pengajuan melebihi kuota bulanan terlambat (${maxLateCount}x / ${maxLateMinutes} menit). Centang persetujuan dispensasi di bawah untuk tetap mengirimkan pengajuan.`
         );
         return;
       }
 
       onSubmitRequest({
-        employeeId: currentEmployee.id,
-        employeeName: currentEmployee.name,
-        employeeNik: currentEmployee.nik,
-        department: currentEmployee.department,
+        employeeId: targetEmployee.id,
+        employeeName: targetEmployee.name,
+        employeeNik: targetEmployee.nik,
+        department: targetEmployee.department,
         type: 'Izin Datang Terlambat',
         startDate,
         endDate: startDate,
         totalDays: 1,
         estimatedArrivalTime,
         lateMinutes: lateMinutesInput,
-        reason: reason.trim(),
+        reason: isOverQuota 
+          ? `[Dispensasi Melebihi Kuota] ${reason.trim()}`
+          : reason.trim(),
       });
 
       setIsModalOpen(false);
       setReason('');
+      setIsSpecialExemptionChecked(false);
       return;
     }
 
@@ -248,53 +352,54 @@ export default function LeaveManagement({
         setFormError('Pilih tanggal izin pulang awal.');
         return;
       }
+      if (!estimatedDepartureTime) {
+        setFormError('Pilih estimasi jam meninggalkan kantor.');
+        return;
+      }
       if (earlyMinutesInput <= 0) {
-        setFormError('Durasi pulang awal harus lebih dari 0 menit (estimasi jam pulang harus sebelum jam selesai kerja).');
+        setFormError('Durasi pulang awal harus minimal 1 menit.');
         return;
       }
 
       const projectedEarlyCount = usedEarlyCount + 1;
       const projectedEarlyMinutes = usedEarlyMinutes + earlyMinutesInput;
+      const isOverQuota = projectedEarlyCount > maxEarlyCount || projectedEarlyMinutes > maxEarlyMinutes;
 
-      if (projectedEarlyCount > maxEarlyCount) {
+      if (isOverQuota && !isSpecialExemptionChecked && !isAdminOrSuper) {
         setFormError(
-          `Pengajuan ditolak: Kuota frekuensi izin pulang awal bulan ini sudah mencapai batas maksimal (${maxEarlyCount} kali). Hubungi HRD untuk permohonan khusus.`
-        );
-        return;
-      }
-
-      if (projectedEarlyMinutes > maxEarlyMinutes) {
-        setFormError(
-          `Pengajuan ditolak: Total durasi izin pulang awal bulan ini akan menjadi ${projectedEarlyMinutes} menit, melebihi batas maksimal kantor (${maxEarlyMinutes} menit). Sisa durasi: ${remainingEarlyMinutes} menit.`
+          `Pengajuan melebihi kuota bulanan pulang awal (${maxEarlyCount}x / ${maxEarlyMinutes} menit). Centang persetujuan dispensasi di bawah untuk tetap mengirimkan pengajuan.`
         );
         return;
       }
 
       onSubmitRequest({
-        employeeId: currentEmployee.id,
-        employeeName: currentEmployee.name,
-        employeeNik: currentEmployee.nik,
-        department: currentEmployee.department,
+        employeeId: targetEmployee.id,
+        employeeName: targetEmployee.name,
+        employeeNik: targetEmployee.nik,
+        department: targetEmployee.department,
         type: 'Izin Pulang Awal',
         startDate,
         endDate: startDate,
         totalDays: 1,
         estimatedDepartureTime,
         earlyDepartureMinutes: earlyMinutesInput,
-        reason: reason.trim(),
+        reason: isOverQuota 
+          ? `[Dispensasi Melebihi Kuota] ${reason.trim()}`
+          : reason.trim(),
       });
 
       setIsModalOpen(false);
       setReason('');
+      setIsSpecialExemptionChecked(false);
       return;
     }
 
     // Standard Leave Requests (Cuti, Sakit, Izin Pribadi, etc.)
     onSubmitRequest({
-      employeeId: currentEmployee.id,
-      employeeName: currentEmployee.name,
-      employeeNik: currentEmployee.nik,
-      department: currentEmployee.department,
+      employeeId: targetEmployee.id,
+      employeeName: targetEmployee.name,
+      employeeNik: targetEmployee.nik,
+      department: targetEmployee.department,
       type: leaveType,
       startDate,
       endDate,
@@ -304,6 +409,29 @@ export default function LeaveManagement({
 
     setIsModalOpen(false);
     setReason('');
+  };
+
+  const openFormWithDefaults = (type: LeaveType) => {
+    setLeaveType(type);
+    setStartDate(getTodayDateString());
+    setEndDate(getTodayDateString());
+    setTargetEmpId(currentEmployee.id);
+    setTargetEmpSearch(currentEmployee.name);
+    setFormError(null);
+    setIsSpecialExemptionChecked(false);
+    setReason('');
+
+    if (type === 'Izin Datang Terlambat') {
+      const defaultLateMins = 30;
+      setLateMinutesInput(defaultLateMins);
+      setEstimatedArrivalTime(addMinutesToTime(workStartTime, defaultLateMins));
+    } else if (type === 'Izin Pulang Awal') {
+      const defaultEarlyMins = 60;
+      setEarlyMinutesInput(defaultEarlyMins);
+      setEstimatedDepartureTime(subtractMinutesFromTime(workEndTime, defaultEarlyMins));
+    }
+
+    setIsModalOpen(true);
   };
 
   return (
@@ -898,9 +1026,9 @@ export default function LeaveManagement({
       {/* Modal Ajukan Cuti / Izin Datang Terlambat / Izin Pulang Awal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
             
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
                 <h4 className="text-sm font-bold text-slate-900">Form Pengajuan Izin & Cuti</h4>
@@ -908,13 +1036,13 @@ export default function LeaveManagement({
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto grow">
               {formError && (
                 <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -922,20 +1050,92 @@ export default function LeaveManagement({
                 </div>
               )}
 
-              {/* Employee info banner & Current Quotas */}
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>
-                  <span className="font-bold text-slate-900">{currentEmployee.name}</span>
-                  <p className="text-slate-500 text-[11px]">{currentEmployee.nik} • {currentEmployee.department}</p>
+              {/* Employee Selection with Search */}
+              <div className="relative">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Karyawan Pemohon <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    ref={targetEmpInputRef}
+                    type="text"
+                    value={targetEmpSearch}
+                    onChange={(e) => {
+                      setTargetEmpSearch(e.target.value);
+                      setIsTargetEmpPickerOpen(true);
+                    }}
+                    onFocus={() => setIsTargetEmpPickerOpen(true)}
+                    placeholder="Ketik manual nama / NIK karyawan..."
+                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-9"
+                  />
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 </div>
-                <div className="flex items-center gap-2 flex-wrap text-[11px]">
-                  <div className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-slate-600">
-                    Cuti: <strong className="text-blue-600">{currentEmployee.remainingLeaveQuota} Hari</strong>
+
+                {isTargetEmpPickerOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setIsTargetEmpPickerOpen(false)}
+                    />
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 max-h-48 overflow-y-auto z-20 divide-y divide-slate-100">
+                      {filteredEmployeesForModal.length === 0 ? (
+                        <div className="p-3 text-xs text-slate-400 text-center">
+                          Karyawan &quot;{targetEmpSearch}&quot; tidak ditemukan.
+                        </div>
+                      ) : (
+                        filteredEmployeesForModal.map((emp) => (
+                          <button
+                            key={emp.id}
+                            type="button"
+                            onClick={() => {
+                              setTargetEmpId(emp.id);
+                              setTargetEmpSearch(emp.name);
+                              setIsTargetEmpPickerOpen(false);
+                              // Sync times to new employee shift
+                              const start = emp.shift?.startTime || officeConfig?.workStartTime || '08:30';
+                              const end = emp.shift?.endTime || officeConfig?.workEndTime || '17:30';
+                              if (leaveType === 'Izin Datang Terlambat') {
+                                setEstimatedArrivalTime(addMinutesToTime(start, lateMinutesInput));
+                              } else if (leaveType === 'Izin Pulang Awal') {
+                                setEstimatedDepartureTime(subtractMinutesFromTime(end, earlyMinutesInput));
+                              }
+                            }}
+                            className={`w-full text-left px-3.5 py-2 hover:bg-blue-50 flex items-center justify-between text-xs cursor-pointer ${
+                              targetEmployee.id === emp.id ? 'bg-blue-50/70 font-bold text-blue-800' : 'text-slate-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-semibold text-slate-900">{emp.name}</div>
+                              <div className="text-[10px] text-slate-500">{emp.nik} • {emp.department} • Shift {emp.shift?.name || 'Reguler'} ({emp.shift?.startTime || '08:30'}-{emp.shift?.endTime || '17:30'})</div>
+                            </div>
+                            {targetEmployee.id === emp.id && (
+                              <Check className="w-3.5 h-3.5 text-blue-600" />
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Employee info banner & Current Quotas */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="font-bold text-slate-900">{targetEmployee.name}</span>
                   </div>
-                  <div className="bg-amber-50 px-2 py-1 rounded-lg border border-amber-200 text-amber-900">
+                  <p className="text-slate-500 text-[11px] font-mono mt-0.5">{targetEmployee.nik} • {targetEmployee.department} • Jam: {workStartTime}-{workEndTime}</p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                  <div className="bg-white px-2 py-0.5 rounded-md border border-slate-200 text-slate-600">
+                    Cuti: <strong className="text-blue-600">{targetEmployee.remainingLeaveQuota}h</strong>
+                  </div>
+                  <div className="bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 text-amber-900">
                     Terlambat: <strong className="text-amber-800">{remainingLateCount}x ({remainingLateMinutes}m)</strong>
                   </div>
-                  <div className="bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200 text-indigo-900">
+                  <div className="bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 text-indigo-900">
                     Pulang Awal: <strong className="text-indigo-800">{remainingEarlyCount}x ({remainingEarlyMinutes}m)</strong>
                   </div>
                 </div>
@@ -953,6 +1153,13 @@ export default function LeaveManagement({
                     const newType = e.target.value as LeaveType;
                     setLeaveType(newType);
                     setFormError(null);
+                    if (newType === 'Izin Datang Terlambat') {
+                      setLateMinutesInput(30);
+                      setEstimatedArrivalTime(addMinutesToTime(workStartTime, 30));
+                    } else if (newType === 'Izin Pulang Awal') {
+                      setEarlyMinutesInput(60);
+                      setEstimatedDepartureTime(subtractMinutesFromTime(workEndTime, 60));
+                    }
                   }}
                   className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -968,10 +1175,15 @@ export default function LeaveManagement({
               {/* SPECIFIC FIELDS FOR IZIN DATANG TERLAMBAT */}
               {leaveType === 'Izin Datang Terlambat' && (
                 <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200 space-y-3.5">
-                  <div className="flex items-center gap-2">
-                    <ClockAlert className="w-4 h-4 text-amber-600" />
-                    <span className="text-xs font-bold text-amber-950">
-                      Rincian Waktu Izin Datang Terlambat
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ClockAlert className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-bold text-amber-950">
+                        Rincian Waktu Izin Datang Terlambat
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-md font-semibold">
+                      Shift Mulai: {workStartTime}
                     </span>
                   </div>
 
@@ -983,7 +1195,7 @@ export default function LeaveManagement({
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800"
+                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
                       required
                     />
                   </div>
@@ -1006,17 +1218,58 @@ export default function LeaveManagement({
                         type="time"
                         value={estimatedArrivalTime}
                         onChange={(e) => handleEstimatedArrivalChange(e.target.value)}
-                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-amber-700"
+                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
                         required
                       />
                     </div>
                   </div>
 
-                  <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600 font-medium">Estimasi Durasi Terlambat:</span>
-                      <span className="font-mono font-bold text-amber-800 text-sm">
-                        {lateMinutesInput} Menit ({(lateMinutesInput / 60).toFixed(1)} Jam)
+                  {/* Manual Minute Input & Quick Presets */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-semibold text-slate-700">
+                        Durasi Keterlambatan (Menit) <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[11px] text-slate-500">Ketik angka / pilih preset:</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="480"
+                        value={lateMinutesInput}
+                        onChange={(e) => handleLateMinutesNumberChange(parseInt(e.target.value) || 0)}
+                        className="w-28 text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-amber-800 text-center focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        placeholder="Menit"
+                        required
+                      />
+                      <span className="text-xs font-bold text-slate-600">Menit</span>
+
+                      <div className="flex items-center gap-1 overflow-x-auto grow justify-end">
+                        {[15, 30, 45, 60, 90, 120].map((mins) => (
+                          <button
+                            key={mins}
+                            type="button"
+                            onClick={() => handleLateMinutesNumberChange(mins)}
+                            className={`px-2 py-1 text-[11px] font-semibold rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
+                              lateMinutesInput === mins
+                                ? 'bg-amber-600 text-white border-amber-600'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
+                            }`}
+                          >
+                            +{mins}m
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quota Projection Info */}
+                  <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 font-medium">Estimasi Waktu Tiba:</span>
+                      <span className="font-mono font-bold text-amber-800">
+                        {estimatedArrivalTime} WIB ({lateMinutesInput} Menit / {(lateMinutesInput / 60).toFixed(1)} Jam)
                       </span>
                     </div>
 
@@ -1035,11 +1288,27 @@ export default function LeaveManagement({
                   </div>
 
                   {(usedLateCount + 1 > maxLateCount || usedLateMinutes + lateMinutesInput > maxLateMinutes) && (
-                    <div className="p-2.5 rounded-lg bg-rose-100 border border-rose-300 text-rose-900 text-xs flex items-start gap-2">
-                      <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                      <span>
-                        Pengajuan ini melebihi batasan ketentuan kantor bulanan ({maxLateCount} kali / {maxLateMinutes} menit).
-                      </span>
+                    <div className="p-3 rounded-xl bg-amber-100/90 border border-amber-300 text-amber-950 text-xs space-y-2">
+                      <div className="flex items-start gap-2">
+                        <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="block font-bold">Peringatan Kuota Bulanan</strong>
+                          <p className="text-[11px] leading-relaxed">
+                            Pengajuan ini melebihi batasan ketentuan bulanan ({maxLateCount} kali / {maxLateMinutes} menit).
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 pt-1 border-t border-amber-200 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSpecialExemptionChecked}
+                          onChange={(e) => setIsSpecialExemptionChecked(e.target.checked)}
+                          className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500"
+                        />
+                        <span className="text-[11px] font-semibold text-amber-900">
+                          Ajukan sebagai permohonan dispensasi / kondisi darurat (Memerlukan persetujuan khusus HRD)
+                        </span>
+                      </label>
                     </div>
                   )}
                 </div>
@@ -1048,10 +1317,15 @@ export default function LeaveManagement({
               {/* SPECIFIC FIELDS FOR IZIN PULANG AWAL */}
               {leaveType === 'Izin Pulang Awal' && (
                 <div className="p-4 bg-indigo-50/60 rounded-xl border border-indigo-200 space-y-3.5">
-                  <div className="flex items-center gap-2">
-                    <LogOut className="w-4 h-4 text-indigo-600" />
-                    <span className="text-xs font-bold text-indigo-950">
-                      Rincian Waktu Izin Pulang Lebih Awal
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <LogOut className="w-4 h-4 text-indigo-600" />
+                      <span className="text-xs font-bold text-indigo-950">
+                        Rincian Waktu Izin Pulang Lebih Awal
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-indigo-800 bg-indigo-100/80 px-2 py-0.5 rounded-md font-semibold">
+                      Shift Selesai: {workEndTime}
                     </span>
                   </div>
 
@@ -1063,7 +1337,7 @@ export default function LeaveManagement({
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800"
+                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       required
                     />
                   </div>
@@ -1086,17 +1360,58 @@ export default function LeaveManagement({
                         type="time"
                         value={estimatedDepartureTime}
                         onChange={(e) => handleEstimatedDepartureChange(e.target.value)}
-                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-indigo-700"
+                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         required
                       />
                     </div>
                   </div>
 
-                  <div className="p-3 bg-white rounded-xl border border-indigo-200 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600 font-medium">Estimasi Durasi Pulang Lebih Awal:</span>
-                      <span className="font-mono font-bold text-indigo-800 text-sm">
-                        {earlyMinutesInput} Menit ({(earlyMinutesInput / 60).toFixed(1)} Jam)
+                  {/* Manual Minute Input & Quick Presets */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-semibold text-slate-700">
+                        Durasi Pulang Awal (Menit) <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[11px] text-slate-500">Ketik angka / pilih preset:</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="480"
+                        value={earlyMinutesInput}
+                        onChange={(e) => handleEarlyMinutesNumberChange(parseInt(e.target.value) || 0)}
+                        className="w-28 text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-indigo-800 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Menit"
+                        required
+                      />
+                      <span className="text-xs font-bold text-slate-600">Menit</span>
+
+                      <div className="flex items-center gap-1 overflow-x-auto grow justify-end">
+                        {[15, 30, 45, 60, 90, 120].map((mins) => (
+                          <button
+                            key={mins}
+                            type="button"
+                            onClick={() => handleEarlyMinutesNumberChange(mins)}
+                            className={`px-2 py-1 text-[11px] font-semibold rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
+                              earlyMinutesInput === mins
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-indigo-50 hover:border-indigo-300'
+                            }`}
+                          >
+                            {mins}m
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quota Projection Info */}
+                  <div className="p-3 bg-white rounded-xl border border-indigo-200 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 font-medium">Estimasi Waktu Pulang:</span>
+                      <span className="font-mono font-bold text-indigo-800">
+                        {estimatedDepartureTime} WIB ({earlyMinutesInput} Menit / {(earlyMinutesInput / 60).toFixed(1)} Jam)
                       </span>
                     </div>
 
@@ -1115,11 +1430,27 @@ export default function LeaveManagement({
                   </div>
 
                   {(usedEarlyCount + 1 > maxEarlyCount || usedEarlyMinutes + earlyMinutesInput > maxEarlyMinutes) && (
-                    <div className="p-2.5 rounded-lg bg-rose-100 border border-rose-300 text-rose-900 text-xs flex items-start gap-2">
-                      <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                      <span>
-                        Pengajuan ini melebihi batasan ketentuan izin pulang awal bulanan ({maxEarlyCount} kali / {maxEarlyMinutes} menit).
-                      </span>
+                    <div className="p-3 rounded-xl bg-indigo-100/90 border border-indigo-300 text-indigo-950 text-xs space-y-2">
+                      <div className="flex items-start gap-2">
+                        <ShieldAlert className="w-4 h-4 text-indigo-700 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="block font-bold">Peringatan Kuota Bulanan</strong>
+                          <p className="text-[11px] leading-relaxed">
+                            Pengajuan ini melebihi batasan ketentuan izin pulang awal bulanan ({maxEarlyCount} kali / {maxEarlyMinutes} menit).
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 pt-1 border-t border-indigo-200 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSpecialExemptionChecked}
+                          onChange={(e) => setIsSpecialExemptionChecked(e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                        />
+                        <span className="text-[11px] font-semibold text-indigo-900">
+                          Ajukan sebagai permohonan dispensasi / kondisi darurat (Memerlukan persetujuan khusus HRD)
+                        </span>
+                      </label>
                     </div>
                   )}
                 </div>
