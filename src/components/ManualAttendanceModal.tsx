@@ -24,7 +24,7 @@ import {
   UserX,
   Sparkles
 } from 'lucide-react';
-import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee, OfficeConfig } from '../types';
+import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee, LeaveRequest, OfficeConfig } from '../types';
 import { calculateLateMinutes, calculateEarlyMinutes } from '../utils/geo';
 
 interface ManualAttendanceModalProps {
@@ -36,6 +36,7 @@ interface ManualAttendanceModalProps {
   initialRecord?: AttendanceRecord | null;
   currentEmployee?: Employee;
   existingRecords?: AttendanceRecord[];
+  leaveRequests?: LeaveRequest[];
   onSave: (record: AttendanceRecord, isNew: boolean) => void;
   onSaveBulk?: (records: AttendanceRecord[], message: string) => void;
 }
@@ -69,6 +70,7 @@ export default function ManualAttendanceModal({
   initialRecord,
   currentEmployee,
   existingRecords,
+  leaveRequests,
   onSave,
   onSaveBulk,
 }: ManualAttendanceModalProps) {
@@ -88,6 +90,7 @@ export default function ManualAttendanceModal({
   );
   const [bulkDeptFilter, setBulkDeptFilter] = useState<string>('all');
   const [bulkSearchQuery, setBulkSearchQuery] = useState<string>('');
+  const [excludeApprovedLeave, setExcludeApprovedLeave] = useState<boolean>(true);
 
   const [date, setDate] = useState<string>(
     initialRecord?.date || new Date().toISOString().slice(0, 10)
@@ -180,6 +183,94 @@ export default function ManualAttendanceModal({
       setFormError(null);
     }
   }, [initialRecord, initialEmployeeId, isOpen, employees, officeConfig]);
+
+  // Approved leave requests on selected date
+  const employeesOnApprovedLeaveOnDate = useMemo(() => {
+    if (!leaveRequests || !date) return new Map<string, LeaveRequest>();
+    const map = new Map<string, LeaveRequest>();
+    leaveRequests.forEach((r) => {
+      if (r.status === 'Disetujui' && date >= r.startDate && date <= r.endDate) {
+        map.set(r.employeeId, r);
+      }
+    });
+    return map;
+  }, [leaveRequests, date]);
+
+  // Active leave for the currently selected employee in single mode
+  const activeLeaveForSelectedEmp = useMemo(() => {
+    if (!leaveRequests || !selectedEmpId || !date) return null;
+    return leaveRequests.find(
+      (r) => r.employeeId === selectedEmpId && r.status === 'Disetujui' && date >= r.startDate && date <= r.endDate
+    );
+  }, [leaveRequests, selectedEmpId, date]);
+
+  // Auto-adapt form when selected employee has an approved leave request (single mode & not editing)
+  useEffect(() => {
+    if (inputMode !== 'single' || isEditing || !activeLeaveForSelectedEmp) {
+      return;
+    }
+
+    const req = activeLeaveForSelectedEmp;
+    const isLatePermit = req.type === 'Izin Datang Terlambat';
+    const isEarlyPermit = req.type === 'Izin Pulang Awal';
+    const isDinas = req.type === 'Izin Dinas Luar';
+    const isFullDayCuti = req.type.toLowerCase().includes('cuti');
+    const isSakit = req.type === 'Sakit';
+
+    if (isLatePermit) {
+      setHasLatePermit(true);
+      if (req.estimatedArrivalTime) {
+        setCheckInTime(req.estimatedArrivalTime.slice(0, 5));
+        setHasNoCheckIn(false);
+      }
+      const noteTag = `[Izin Terlambat Disetujui: Tiba ${req.estimatedArrivalTime || '-'}, ${req.lateMinutes || 0} mnt] • ${req.reason || ''}`;
+      if (!notes || !notes.includes('[Izin Terlambat Disetujui')) {
+        setNotes(noteTag);
+      }
+    } else if (isEarlyPermit) {
+      setHasEarlyPermit(true);
+      if (req.estimatedDepartureTime) {
+        setCheckOutTime(req.estimatedDepartureTime.slice(0, 5));
+        setHasNoCheckOut(false);
+      }
+      const noteTag = `[Izin Pulang Awal Disetujui: Pulang ${req.estimatedDepartureTime || '-'}, Awal ${req.earlyDepartureMinutes || 0} mnt] • ${req.reason || ''}`;
+      if (!notes || !notes.includes('[Izin Pulang Awal Disetujui')) {
+        setNotes(noteTag);
+      }
+    } else if (isDinas) {
+      setAttendanceType('Dinas Luar');
+      setStatus('Hadir Tepat Waktu');
+      setIsStatusManuallyOverridden(true);
+      const dinasNote = `[Tugas Dinas Luar Disetujui] ${req.reason || ''}${req.approvedBy ? ` (Disetujui: ${req.approvedBy})` : ''}`;
+      if (!notes || !notes.includes('[Tugas Dinas Luar Disetujui')) {
+        setNotes(dinasNote);
+      }
+    } else {
+      // Full day Cuti, Sakit, Izin
+      const targetStatus: AttendanceStatus = isSakit ? 'Sakit' : (isFullDayCuti ? 'Cuti' : 'Izin');
+      setStatus(targetStatus);
+      setIsStatusManuallyOverridden(true);
+      setHasNoCheckIn(true);
+      setHasNoCheckOut(true);
+      const leaveNote = `Pengajuan ${req.type} Disetujui: ${req.reason || ''}${req.approvedBy ? ` (Disetujui: ${req.approvedBy})` : ''}`;
+      if (!notes || !notes.includes('Disetujui:')) {
+        setNotes(leaveNote);
+      }
+    }
+  }, [activeLeaveForSelectedEmp, inputMode, isEditing]);
+
+  // Exclude employees on approved leave from bulk selection when enabled
+  useEffect(() => {
+    if (excludeApprovedLeave && employeesOnApprovedLeaveOnDate.size > 0 && inputMode === 'bulk') {
+      setSelectedBulkEmpIds((prev) =>
+        prev.filter((id) => {
+          const leave = employeesOnApprovedLeaveOnDate.get(id);
+          if (!leave) return true;
+          return !(leave.type.toLowerCase().includes('cuti') || leave.type === 'Sakit' || leave.type === 'Izin' || leave.type === 'Izin Dinas Luar');
+        })
+      );
+    }
+  }, [date, excludeApprovedLeave, employeesOnApprovedLeaveOnDate, inputMode]);
 
   // Current selected employee object in single mode
   const selectedEmployee = useMemo(() => {
@@ -670,6 +761,21 @@ export default function ManualAttendanceModal({
                   </div>
                 </div>
               )}
+
+              {/* Active Approved Leave Banner for Single Mode */}
+              {activeLeaveForSelectedEmp && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+                  <span className="text-base leading-none mt-0.5">📋</span>
+                  <div className="space-y-1">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span>Pengajuan Terverifikasi: {activeLeaveForSelectedEmp.type} (Disetujui)</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Karyawan memiliki pengajuan <strong>{activeLeaveForSelectedEmp.type}</strong> yang telah disetujui ({activeLeaveForSelectedEmp.startDate} s/d {activeLeaveForSelectedEmp.endDate}). Alasan: <em>"{activeLeaveForSelectedEmp.reason || '-'}"</em>. Form otomatis diisi sesuai data pengajuan.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -732,10 +838,28 @@ export default function ManualAttendanceModal({
                 </select>
               </div>
 
+              {/* Exclude Approved Leaves Filter in Bulk */}
+              {employeesOnApprovedLeaveOnDate.size > 0 && (
+                <div className="p-2 rounded-lg bg-amber-50/80 border border-amber-200/80 flex items-center justify-between text-xs text-amber-900">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={excludeApprovedLeave}
+                      onChange={(e) => setExcludeApprovedLeave(e.target.checked)}
+                      className="rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-medium">
+                      🛡️ <strong>Lindungi Pengajuan Cuti/Izin:</strong> Jangan centang otomatis {employeesOnApprovedLeaveOnDate.size} karyawan yang sedang cuti/izin pada tanggal ini
+                    </span>
+                  </label>
+                </div>
+              )}
+
               {/* Checklist box */}
               <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 bg-white rounded-lg border border-slate-200">
                 {filteredBulkEmployees.map((emp) => {
                   const isChecked = selectedBulkEmpIds.includes(emp.id);
+                  const leave = employeesOnApprovedLeaveOnDate.get(emp.id);
                   return (
                     <div
                       key={emp.id}
@@ -760,7 +884,14 @@ export default function ManualAttendanceModal({
                         <span className="font-semibold text-slate-800 truncate">{emp.name}</span>
                         <span className="text-[10px] text-slate-400">({emp.nik})</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 shrink-0">{emp.department}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {leave && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold border border-amber-200">
+                            {leave.type}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-500">{emp.department}</span>
+                      </div>
                     </div>
                   );
                 })}

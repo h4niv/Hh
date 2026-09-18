@@ -20,7 +20,8 @@ import {
   ShieldCheck,
   Pencil,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Search
 } from 'lucide-react';
 import { LeaveRequest, LeaveStatus, Employee, OfficeConfig } from '../types';
 import { getTodayDateString } from '../utils/geo';
@@ -54,6 +55,11 @@ export default function PermitRecapDashboard({
   });
   const [filterType, setFilterType] = useState<'all' | 'terlambat' | 'pulang_awal'>('all');
   const [selectedDept, setSelectedDept] = useState<string>('Semua');
+  const [permitFilterQuick, setPermitFilterQuick] = useState<'all' | 'with_late' | 'with_early' | 'with_any'>('all');
+  const [permitSortBy, setPermitSortBy] = useState<
+    'late_minutes_desc' | 'late_count_desc' | 'early_minutes_desc' | 'early_count_desc' | 'total_minutes_desc' | 'name_asc'
+  >('late_minutes_desc');
+  const [summarySearchQuery, setSummarySearchQuery] = useState<string>('');
 
   const todayStr = getTodayDateString();
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
@@ -194,7 +200,7 @@ export default function PermitRecapDashboard({
 
   // Per-employee breakdown calculation for the selected month
   const employeeMonthlySummary = useMemo(() => {
-    return employees.map(emp => {
+    let list = employees.map(emp => {
       const empLateReqs = monthlyLateRequests.filter(r => r.employeeId === emp.id && r.status !== 'Ditolak');
       const empEarlyReqs = monthlyEarlyRequests.filter(r => r.employeeId === emp.id && r.status !== 'Ditolak');
 
@@ -222,9 +228,108 @@ export default function PermitRecapDashboard({
       };
     }).filter(item => {
       if (selectedDept !== 'Semua' && item.employee.department !== selectedDept) return false;
+      if (permitFilterQuick === 'with_late' && item.lateCount === 0) return false;
+      if (permitFilterQuick === 'with_early' && item.earlyCount === 0) return false;
+      if (permitFilterQuick === 'with_any' && item.lateCount === 0 && item.earlyCount === 0) return false;
+      if (summarySearchQuery) {
+        const q = summarySearchQuery.toLowerCase();
+        const matchName = item.employee.name.toLowerCase().includes(q);
+        const matchNik = item.employee.nik.toLowerCase().includes(q);
+        const matchDept = item.employee.department.toLowerCase().includes(q);
+        if (!matchName && !matchNik && !matchDept) return false;
+      }
       return true;
     });
-  }, [employees, monthlyLateRequests, monthlyEarlyRequests, maxLateCount, maxLateMinutes, maxEarlyCount, maxEarlyMinutes, selectedDept]);
+
+    // Sorting
+    list.sort((a, b) => {
+      if (permitSortBy === 'late_minutes_desc') {
+        if (b.lateMinutes !== a.lateMinutes) return b.lateMinutes - a.lateMinutes;
+        return b.lateCount - a.lateCount;
+      }
+      if (permitSortBy === 'late_count_desc') {
+        if (b.lateCount !== a.lateCount) return b.lateCount - a.lateCount;
+        return b.lateMinutes - a.lateMinutes;
+      }
+      if (permitSortBy === 'early_minutes_desc') {
+        if (b.earlyMinutes !== a.earlyMinutes) return b.earlyMinutes - a.earlyMinutes;
+        return b.earlyCount - a.earlyCount;
+      }
+      if (permitSortBy === 'early_count_desc') {
+        if (b.earlyCount !== a.earlyCount) return b.earlyCount - a.earlyCount;
+        return b.earlyMinutes - a.earlyMinutes;
+      }
+      if (permitSortBy === 'total_minutes_desc') {
+        if (b.totalWorkPermitMinutes !== a.totalWorkPermitMinutes) return b.totalWorkPermitMinutes - a.totalWorkPermitMinutes;
+        return (b.lateCount + b.earlyCount) - (a.lateCount + a.earlyCount);
+      }
+      return a.employee.name.localeCompare(b.employee.name);
+    });
+
+    return list;
+  }, [
+    employees, 
+    monthlyLateRequests, 
+    monthlyEarlyRequests, 
+    maxLateCount, 
+    maxLateMinutes, 
+    maxEarlyCount, 
+    maxEarlyMinutes, 
+    selectedDept, 
+    permitFilterQuick, 
+    summarySearchQuery, 
+    permitSortBy
+  ]);
+
+  // Overall Late Permit Recap Totals for Selected Month & Department
+  const lateRecapSummary = useMemo(() => {
+    const validMonthlyLate = monthlyLateRequests.filter(r => {
+      if (selectedDept !== 'Semua' && r.department !== selectedDept) return false;
+      return r.status !== 'Ditolak';
+    });
+
+    const totalCount = validMonthlyLate.length;
+    const totalMinutes = validMonthlyLate.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
+    const affectedEmployeeIds = new Set(validMonthlyLate.map(r => r.employeeId));
+    const avgMinutesPerLate = totalCount > 0 ? Math.round(totalMinutes / totalCount) : 0;
+    const approvedCount = validMonthlyLate.filter(r => r.status === 'Disetujui').length;
+    const pendingCount = validMonthlyLate.filter(r => r.status === 'Menunggu').length;
+
+    return {
+      totalCount,
+      totalMinutes,
+      totalHours: (totalMinutes / 60).toFixed(1),
+      affectedEmployeesCount: affectedEmployeeIds.size,
+      avgMinutesPerLate,
+      approvedCount,
+      pendingCount,
+    };
+  }, [monthlyLateRequests, selectedDept]);
+
+  // Overall Early Departure Permit Recap Totals for Selected Month & Department
+  const earlyRecapSummary = useMemo(() => {
+    const validMonthlyEarly = monthlyEarlyRequests.filter(r => {
+      if (selectedDept !== 'Semua' && r.department !== selectedDept) return false;
+      return r.status !== 'Ditolak';
+    });
+
+    const totalCount = validMonthlyEarly.length;
+    const totalMinutes = validMonthlyEarly.reduce((sum, r) => sum + (r.earlyDepartureMinutes || 0), 0);
+    const affectedEmployeeIds = new Set(validMonthlyEarly.map(r => r.employeeId));
+    const avgMinutesPerEarly = totalCount > 0 ? Math.round(totalMinutes / totalCount) : 0;
+    const approvedCount = validMonthlyEarly.filter(r => r.status === 'Disetujui').length;
+    const pendingCount = validMonthlyEarly.filter(r => r.status === 'Menunggu').length;
+
+    return {
+      totalCount,
+      totalMinutes,
+      totalHours: (totalMinutes / 60).toFixed(1),
+      affectedEmployeesCount: affectedEmployeeIds.size,
+      avgMinutesPerEarly,
+      approvedCount,
+      pendingCount,
+    };
+  }, [monthlyEarlyRequests, selectedDept]);
 
   // Department breakdown stats
   const departmentStats = useMemo(() => {
@@ -519,23 +624,31 @@ export default function PermitRecapDashboard({
             </button>
             <button
               type="button"
+              id="filter-type-terlambat-btn"
               onClick={() => setFilterType('terlambat')}
-              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
-                filterType === 'terlambat' ? 'bg-amber-500 text-white font-bold shadow-2xs' : 'text-slate-600'
+              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+                filterType === 'terlambat' ? 'bg-amber-500 text-white font-bold shadow-2xs' : 'text-slate-600 hover:text-amber-800'
               }`}
             >
               <ClockAlert className="w-3 h-3" />
-              Terlambat
+              <span>Izin Terlambat</span>
+              <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${filterType === 'terlambat' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'}`}>
+                {lateRecapSummary.totalCount}x ({lateRecapSummary.totalMinutes}m)
+              </span>
             </button>
             <button
               type="button"
+              id="filter-type-pulang-awal-btn"
               onClick={() => setFilterType('pulang_awal')}
-              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
-                filterType === 'pulang_awal' ? 'bg-indigo-600 text-white font-bold shadow-2xs' : 'text-slate-600'
+              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+                filterType === 'pulang_awal' ? 'bg-indigo-600 text-white font-bold shadow-2xs' : 'text-slate-600 hover:text-indigo-800'
               }`}
             >
               <LogOut className="w-3 h-3" />
-              Pulang Awal
+              <span>Izin Pulang Awal</span>
+              <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${filterType === 'pulang_awal' ? 'bg-indigo-700 text-white' : 'bg-indigo-100 text-indigo-800'}`}>
+                {earlyRecapSummary.totalCount}x ({earlyRecapSummary.totalMinutes}m)
+              </span>
             </button>
           </div>
 
@@ -554,6 +667,98 @@ export default function PermitRecapDashboard({
           </div>
         </div>
       </div>
+
+      {/* FILTER REKAPITULASI IZIN DATANG TERLAMBAT: HIGHLIGHT CARD */}
+      {filterType === 'terlambat' && (
+        <div className="px-5 py-3.5 bg-gradient-to-r from-amber-50 via-amber-50/70 to-orange-50/50 border-b border-amber-200/80 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <ClockAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                    Rekapitulasi Filter Izin Datang Terlambat
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-200/80 text-amber-900 border border-amber-300">
+                    Periode: {selectedMonth}
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Menampilkan ringkasan total frekuensi (berapa kali) dan akumulasi total menit keterlambatan {selectedDept !== 'Semua' ? `Departemen ${selectedDept}` : 'Semua Departemen'}.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Stat Chips */}
+            <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-amber-200/90 shadow-2xs text-left">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Berapa Kali (Frekuensi)</span>
+                <span className="text-sm font-extrabold text-amber-900">{lateRecapSummary.totalCount} Kali</span>
+              </div>
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-amber-200/90 shadow-2xs text-left">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Total Durasi Menit</span>
+                <span className="text-sm font-extrabold text-amber-900">{lateRecapSummary.totalMinutes} Menit <span className="text-xs font-medium text-slate-500">({lateRecapSummary.totalHours} Jam)</span></span>
+              </div>
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-amber-200/90 shadow-2xs text-left hidden md:block">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Rata-Rata per Izin</span>
+                <span className="text-sm font-extrabold text-slate-800">{lateRecapSummary.avgMinutesPerLate} Menit</span>
+              </div>
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-amber-200/90 shadow-2xs text-left">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Karyawan Terkait</span>
+                <span className="text-sm font-extrabold text-blue-700">{lateRecapSummary.affectedEmployeesCount} Orang</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FILTER REKAPITULASI IZIN PULANG AWAL: HIGHLIGHT CARD */}
+      {filterType === 'pulang_awal' && (
+        <div className="px-5 py-3.5 bg-gradient-to-r from-indigo-50 via-indigo-50/70 to-blue-50/50 border-b border-indigo-200/80 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-indigo-950 uppercase tracking-wide">
+                    Rekapitulasi Filter Izin Pulang Awal
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-200/80 text-indigo-900 border border-indigo-300">
+                    Periode: {selectedMonth}
+                  </span>
+                </div>
+                <p className="text-[11px] text-indigo-800 mt-0.5">
+                  Menampilkan ringkasan total frekuensi (berapa kali) dan akumulasi total menit kepulangan awal {selectedDept !== 'Semua' ? `Departemen ${selectedDept}` : 'Semua Departemen'}.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Stat Chips */}
+            <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-indigo-200/90 shadow-2xs text-left">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Berapa Kali (Frekuensi)</span>
+                <span className="text-sm font-extrabold text-indigo-950">{earlyRecapSummary.totalCount} Kali</span>
+              </div>
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-indigo-200/90 shadow-2xs text-left">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Total Durasi Menit</span>
+                <span className="text-sm font-extrabold text-indigo-950">{earlyRecapSummary.totalMinutes} Menit <span className="text-xs font-medium text-slate-500">({earlyRecapSummary.totalHours} Jam)</span></span>
+              </div>
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-indigo-200/90 shadow-2xs text-left hidden md:block">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Rata-Rata per Izin</span>
+                <span className="text-sm font-extrabold text-slate-800">{earlyRecapSummary.avgMinutesPerEarly} Menit</span>
+              </div>
+              <div className="px-3 py-1.5 bg-white rounded-xl border border-indigo-200/90 shadow-2xs text-left">
+                <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Karyawan Terkait</span>
+                <span className="text-sm font-extrabold text-indigo-800">{earlyRecapSummary.affectedEmployeesCount} Orang</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TAB CONTENT 1: DAFTAR PENGAJUAN HARI INI */}
       {activeTab === 'today' && (
@@ -701,128 +906,260 @@ export default function PermitRecapDashboard({
 
       {/* TAB CONTENT 2: REKAP KUOTA BULANAN PER KARYAWAN */}
       {activeTab === 'monthly_summary' && (
-        <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
-          <table className="w-full text-left text-xs text-slate-600 border-collapse">
-            <thead className="bg-slate-50 text-slate-700 uppercase tracking-wider text-[11px] font-semibold border-b border-slate-200 sticky top-0 z-10">
-              <tr>
-                <th className="px-4 py-3">Karyawan</th>
-                <th className="px-4 py-3">Izin Datang Terlambat ({selectedMonth})</th>
-                <th className="px-4 py-3">Izin Pulang Awal ({selectedMonth})</th>
-                <th className="px-4 py-3">Total Jam Izin</th>
-                <th className="px-4 py-3">Status Kuota</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {employeeMonthlySummary.length === 0 ? (
+        <div>
+          {/* Sub-toolbar for monthly summary filtering & sorting */}
+          <div className="p-3 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Search */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                <input
+                  type="text"
+                  value={summarySearchQuery}
+                  onChange={(e) => setSummarySearchQuery(e.target.value)}
+                  placeholder="Cari karyawan / NIK..."
+                  className="pl-8 pr-3 py-1 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-48"
+                />
+              </div>
+
+              {/* Quick Filter Buttons */}
+              <div className="flex items-center gap-1 bg-slate-200/60 p-0.5 rounded-lg">
+                <button
+                  type="button"
+                  id="filter-quick-all"
+                  onClick={() => setPermitFilterQuick('all')}
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                    permitFilterQuick === 'all'
+                      ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Semua ({employees.length})
+                </button>
+                <button
+                  type="button"
+                  id="filter-quick-late"
+                  onClick={() => setPermitFilterQuick(permitFilterQuick === 'with_late' ? 'all' : 'with_late')}
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
+                    permitFilterQuick === 'with_late'
+                      ? 'bg-amber-500 text-white font-bold shadow-2xs'
+                      : 'text-slate-700 hover:text-amber-800'
+                  }`}
+                  title="Tampilkan hanya karyawan yang pernah izin terlambat bulan ini"
+                >
+                  <ClockAlert className="w-3 h-3" />
+                  <span>Izin Terlambat</span>
+                  <span className={`text-[10px] px-1 rounded ${permitFilterQuick === 'with_late' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-900'}`}>
+                    {lateRecapSummary.affectedEmployeesCount}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  id="filter-quick-early"
+                  onClick={() => setPermitFilterQuick(permitFilterQuick === 'with_early' ? 'all' : 'with_early')}
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
+                    permitFilterQuick === 'with_early'
+                      ? 'bg-indigo-600 text-white font-bold shadow-2xs'
+                      : 'text-slate-700 hover:text-indigo-800'
+                  }`}
+                  title="Tampilkan hanya karyawan yang pernah izin pulang awal bulan ini"
+                >
+                  <LogOut className="w-3 h-3" />
+                  <span>Izin Pulang Awal</span>
+                  <span className={`text-[10px] px-1 rounded ${permitFilterQuick === 'with_early' ? 'bg-indigo-700 text-white' : 'bg-indigo-100 text-indigo-900'}`}>
+                    {earlyRecapSummary.affectedEmployeesCount}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  id="filter-quick-any"
+                  onClick={() => setPermitFilterQuick(permitFilterQuick === 'with_any' ? 'all' : 'with_any')}
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
+                    permitFilterQuick === 'with_any'
+                      ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                      : 'text-slate-700 hover:text-blue-800'
+                  }`}
+                  title="Tampilkan karyawan yang memiliki riwayat izin terlambat atau pulang awal"
+                >
+                  <span>Ada Izin (≥1x)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sorting */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-500 font-medium">Urutkan:</span>
+              <select
+                id="select-permit-sort"
+                value={permitSortBy}
+                onChange={(e) => setPermitSortBy(e.target.value as any)}
+                className="px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="late_minutes_desc">⏱️ Terlambat: Menit Terbanyak</option>
+                <option value="late_count_desc">🔢 Terlambat: Kali Terbanyak</option>
+                <option value="early_minutes_desc">⏱️ Pulang Awal: Menit Terbanyak</option>
+                <option value="early_count_desc">🔢 Pulang Awal: Kali Terbanyak</option>
+                <option value="total_minutes_desc">⏳ Total Menit Izin Kerja (Terlambat + Pulang)</option>
+                <option value="name_asc">🔤 Nama Karyawan (A-Z)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
+            <table className="w-full text-left text-xs text-slate-600 border-collapse">
+              <thead className="bg-slate-50 text-slate-700 uppercase tracking-wider text-[11px] font-semibold border-b border-slate-200 sticky top-0 z-10">
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                    Tidak ada data karyawan pada filter ini.
-                  </td>
+                  <th className="px-4 py-3">Karyawan</th>
+                  <th className="px-4 py-3 bg-amber-50/50">
+                    <div className="flex items-center gap-1 text-amber-900">
+                      <ClockAlert className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Izin Datang Terlambat</span>
+                    </div>
+                    <span className="text-[10px] text-amber-800 normal-case block font-normal">
+                      Berapa Kali & Total Menit ({selectedMonth})
+                    </span>
+                  </th>
+                  <th className="px-4 py-3 bg-indigo-50/40">
+                    <div className="flex items-center gap-1 text-indigo-950">
+                      <LogOut className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Izin Pulang Awal</span>
+                    </div>
+                    <span className="text-[10px] text-indigo-800 normal-case block font-normal">
+                      Berapa Kali & Total Menit ({selectedMonth})
+                    </span>
+                  </th>
+                  <th className="px-4 py-3">Total Jam Izin</th>
+                  <th className="px-4 py-3">Status Kuota</th>
                 </tr>
-              ) : (
-                employeeMonthlySummary.map((item) => {
-                  const percentLate = Math.min(100, Math.round((item.lateCount / maxLateCount) * 100));
-                  const percentEarly = Math.min(100, Math.round((item.earlyCount / maxEarlyCount) * 100));
-                  const isMe = item.employee.id === currentEmployee.id;
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {employeeMonthlySummary.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                      Tidak ada data karyawan yang cocok dengan filter.
+                    </td>
+                  </tr>
+                ) : (
+                  employeeMonthlySummary.map((item) => {
+                    const percentLate = Math.min(100, Math.round((item.lateCount / maxLateCount) * 100));
+                    const percentEarly = Math.min(100, Math.round((item.earlyCount / maxEarlyCount) * 100));
+                    const isMe = item.employee.id === currentEmployee.id;
 
-                  return (
-                    <tr key={item.employee.id} className={`hover:bg-slate-50/80 transition-colors ${isMe ? 'bg-blue-50/20 font-medium' : ''}`}>
-                      
-                      {/* Karyawan info */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={item.employee.avatarUrl}
-                            alt={item.employee.name}
-                            className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
-                          />
-                          <div>
-                            <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                              <span>{item.employee.name}</span>
-                              {isMe && (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-800 font-bold">
-                                  Anda
+                    return (
+                      <tr key={item.employee.id} className={`hover:bg-slate-50/80 transition-colors ${isMe ? 'bg-blue-50/20 font-medium' : ''}`}>
+                        
+                        {/* Karyawan info */}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={item.employee.avatarUrl}
+                              alt={item.employee.name}
+                              className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
+                            />
+                            <div>
+                              <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                                <span>{item.employee.name}</span>
+                                {isMe && (
+                                  <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-800 font-bold">
+                                    Anda
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                {item.employee.nik} • {item.employee.department}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Izin Terlambat Stats: Berapa Kali & Total Menit */}
+                        <td className="px-4 py-3 bg-amber-50/20">
+                          <div className="space-y-1 max-w-[180px]">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-amber-950 flex items-center gap-1">
+                                <span className="bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded font-mono">
+                                  {item.lateCount} kali
                                 </span>
-                              )}
+                                <span className="text-[10px] text-slate-400">/ {maxLateCount}x</span>
+                              </span>
+                              <span className="font-mono font-bold text-amber-900">
+                                {item.lateMinutes} menit
+                              </span>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
-                              {item.employee.nik} • {item.employee.department}
+                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${percentLate >= 100 ? 'bg-rose-500' : percentLate >= 60 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${percentLate}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-slate-500">
+                              <span>Sisa: {item.remainingLateCount}x</span>
+                              <span>{item.remainingLateMinutes} mnt tersisa</span>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Izin Terlambat Stats */}
-                      <td className="px-4 py-3">
-                        <div className="space-y-1 max-w-[160px]">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="font-bold text-amber-900">{item.lateCount}/{maxLateCount}x</span>
-                            <span className="font-mono text-slate-500">{item.lateMinutes}/{maxLateMinutes}m</span>
+                        {/* Izin Pulang Awal Stats */}
+                        <td className="px-4 py-3 bg-indigo-50/20">
+                          <div className="space-y-1 max-w-[180px]">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-indigo-950 flex items-center gap-1">
+                                <span className="bg-indigo-100 text-indigo-900 px-1.5 py-0.2 rounded font-mono">
+                                  {item.earlyCount} kali
+                                </span>
+                                <span className="text-[10px] text-slate-400">/ {maxEarlyCount}x</span>
+                              </span>
+                              <span className="font-mono font-bold text-indigo-900">
+                                {item.earlyMinutes} menit
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${percentEarly >= 100 ? 'bg-rose-500' : percentEarly >= 60 ? 'bg-indigo-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${percentEarly}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-slate-500">
+                              <span>Sisa: {item.remainingEarlyCount}x</span>
+                              <span>{item.remainingEarlyMinutes} mnt tersisa</span>
+                            </div>
                           </div>
-                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${percentLate >= 100 ? 'bg-rose-500' : percentLate >= 60 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                              style={{ width: `${percentLate}%` }}
-                            />
+                        </td>
+
+                        {/* Total Jam Izin */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="font-mono font-bold text-slate-900">
+                            {(item.totalWorkPermitMinutes / 60).toFixed(1)} Jam
                           </div>
-                          <span className="text-[10px] text-slate-400 block">
-                            Sisa: {item.remainingLateCount}x ({item.remainingLateMinutes}m)
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {item.totalWorkPermitMinutes} Menit
                           </span>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Izin Pulang Awal Stats */}
-                      <td className="px-4 py-3">
-                        <div className="space-y-1 max-w-[160px]">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="font-bold text-indigo-900">{item.earlyCount}/{maxEarlyCount}x</span>
-                            <span className="font-mono text-slate-500">{item.earlyMinutes}/{maxEarlyMinutes}m</span>
-                          </div>
-                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${percentEarly >= 100 ? 'bg-rose-500' : percentEarly >= 60 ? 'bg-indigo-500' : 'bg-emerald-500'}`}
-                              style={{ width: `${percentEarly}%` }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-slate-400 block">
-                            Sisa: {item.remainingEarlyCount}x ({item.remainingEarlyMinutes}m)
-                          </span>
-                        </div>
-                      </td>
+                        {/* Status */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {item.hasLateWarning || item.hasEarlyWarning ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                              <AlertCircle className="w-3 h-3" /> Kuota Terpakai Penuh
+                            </span>
+                          ) : percentLate >= 66 || percentEarly >= 66 ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                              <Clock className="w-3 h-3" /> Mendekati Batas
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3" /> Kuota Tersedia
+                            </span>
+                          )}
+                        </td>
 
-                      {/* Total Jam Izin */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="font-mono font-bold text-slate-900">
-                          {(item.totalWorkPermitMinutes / 60).toFixed(1)} Jam
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {item.totalWorkPermitMinutes} Menit
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {item.hasLateWarning || item.hasEarlyWarning ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                            <AlertCircle className="w-3 h-3" /> Kuota Terpakai Penuh
-                          </span>
-                        ) : percentLate >= 66 || percentEarly >= 66 ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                            <Clock className="w-3 h-3" /> Mendekati Batas
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3" /> Kuota Tersedia
-                          </span>
-                        )}
-                      </td>
-
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

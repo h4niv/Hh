@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -17,8 +17,8 @@ import {
   CheckSquare,
   Square
 } from 'lucide-react';
-import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee, OfficeConfig } from '../types';
-import { getTodayDateString } from '../utils/geo';
+import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee, LeaveRequest, OfficeConfig } from '../types';
+import { getTodayDateString, calculateLateMinutes, calculateEarlyMinutes } from '../utils/geo';
 
 interface AutoAttendanceModalProps {
   isOpen: boolean;
@@ -27,6 +27,7 @@ interface AutoAttendanceModalProps {
   existingRecords: AttendanceRecord[];
   currentEmployee: Employee;
   officeConfig: OfficeConfig;
+  leaveRequests?: LeaveRequest[];
   onExecuteAutoAttendance: (records: AttendanceRecord[], message: string) => void;
 }
 
@@ -39,6 +40,7 @@ export default function AutoAttendanceModal({
   existingRecords,
   currentEmployee,
   officeConfig,
+  leaveRequests,
   onExecuteAutoAttendance,
 }: AutoAttendanceModalProps) {
   const todayStr = getTodayDateString();
@@ -49,6 +51,7 @@ export default function AutoAttendanceModal({
   const [attendanceType, setAttendanceType] = useState<AttendanceType>('WFO');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [filterUnrecordedOnly, setFilterUnrecordedOnly] = useState<boolean>(false);
+  const [excludeApprovedLeave, setExcludeApprovedLeave] = useState<boolean>(true);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(() =>
     employees.map((e) => e.id)
   );
@@ -69,6 +72,33 @@ export default function AutoAttendanceModal({
   const recordedEmployeeIdsOnDate = useMemo(() => {
     return new Set(recordsOnDate.map((r) => r.employeeId));
   }, [recordsOnDate]);
+
+  // Approved leave requests on target date
+  const employeesOnApprovedLeaveOnDate = useMemo(() => {
+    if (!leaveRequests || !targetDate) return new Map<string, LeaveRequest>();
+    const map = new Map<string, LeaveRequest>();
+    leaveRequests.forEach((r) => {
+      if (r.status === 'Disetujui' && targetDate >= r.startDate && targetDate <= r.endDate) {
+        map.set(r.employeeId, r);
+      }
+    });
+    return map;
+  }, [leaveRequests, targetDate]);
+
+  // Update selectedEmployeeIds when targetDate or excludeApprovedLeave changes
+  useEffect(() => {
+    if (excludeApprovedLeave && employeesOnApprovedLeaveOnDate.size > 0) {
+      setSelectedEmployeeIds((prev) =>
+        prev.filter((id) => {
+          const leave = employeesOnApprovedLeaveOnDate.get(id);
+          if (!leave) return true;
+          // Exclude full-day leaves and external assignments from auto general WFO check-in
+          const isFullDayLeave = leave.type.toLowerCase().includes('cuti') || leave.type === 'Sakit' || leave.type === 'Izin' || leave.type === 'Izin Dinas Luar';
+          return !isFullDayLeave;
+        })
+      );
+    }
+  }, [targetDate, excludeApprovedLeave, employeesOnApprovedLeaveOnDate]);
 
   // Filtered available employees
   const availableEmployees = useMemo(() => {
@@ -94,8 +124,19 @@ export default function AutoAttendanceModal({
 
   // Select all / Deselect all
   const handleSelectAllVisible = () => {
-    const visibleIds = availableEmployees.map((e) => e.id);
-    const allSelected = visibleIds.every((id) => selectedEmployeeIds.includes(id));
+    const visibleIds = availableEmployees
+      .filter((e) => {
+        if (excludeApprovedLeave) {
+          const leave = employeesOnApprovedLeaveOnDate.get(e.id);
+          if (leave && (leave.type.toLowerCase().includes('cuti') || leave.type === 'Sakit' || leave.type === 'Izin' || leave.type === 'Izin Dinas Luar')) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .map((e) => e.id);
+
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedEmployeeIds.includes(id));
     if (allSelected) {
       setSelectedEmployeeIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
     } else {
@@ -147,9 +188,15 @@ export default function AutoAttendanceModal({
 
       targetEmployees.forEach((emp, index) => {
         const existing = recordsOnDate.find((r) => r.employeeId === emp.id);
+        const leaveReq = employeesOnApprovedLeaveOnDate.get(emp.id);
 
         if (existing && !overwriteExisting && autoMode === 'both') {
           // Skip if already recorded and overwrite is disabled
+          return;
+        }
+
+        // If employee is on full-day leave and excludeApprovedLeave is active, do not overwrite leave record
+        if (excludeApprovedLeave && leaveReq && (leaveReq.type.toLowerCase().includes('cuti') || leaveReq.type === 'Sakit' || leaveReq.type === 'Izin' || leaveReq.type === 'Izin Dinas Luar')) {
           return;
         }
 
@@ -171,8 +218,30 @@ export default function AutoAttendanceModal({
           checkOutTime = generateTime(shiftEnd, 'after', index + 1);
         }
 
+        const isLatePermit = leaveReq?.type === 'Izin Datang Terlambat';
+        const isEarlyPermit = leaveReq?.type === 'Izin Pulang Awal';
+        const isDinas = leaveReq?.type === 'Izin Dinas Luar';
+
+        let recordType = attendanceType;
+        if (isDinas) {
+          recordType = 'Dinas Luar';
+        }
+
         const roleLabel = currentEmployee.systemRole === 'superadmin' ? 'Superadmin' : 'Administrator';
-        const notes = `Presensi Otomatis Sistem (Disetujui ${roleLabel}: ${currentEmployee.name})`;
+        let notes = `Presensi Otomatis Sistem (Disetujui ${roleLabel}: ${currentEmployee.name})`;
+
+        if (isLatePermit && leaveReq) {
+          notes += ` • [Izin Terlambat Disetujui: ${leaveReq.reason || '-'}]`;
+        }
+        if (isEarlyPermit && leaveReq) {
+          notes += ` • [Izin Pulang Awal Disetujui: ${leaveReq.reason || '-'}]`;
+        }
+        if (isDinas && leaveReq) {
+          notes += ` • [Tugas Dinas Luar: ${leaveReq.reason || '-'}]`;
+        }
+
+        const lateMins = calculateLateMinutes(checkInTime, shiftStart);
+        const earlyMins = calculateEarlyMinutes(checkOutTime, shiftEnd, checkInTime, shiftStart);
 
         const record: AttendanceRecord = {
           id: existing ? existing.id : `att-auto-${Date.now()}-${emp.id}`,
@@ -181,10 +250,14 @@ export default function AutoAttendanceModal({
           employeeNik: emp.nik,
           department: emp.department,
           date: targetDate,
-          type: attendanceType,
+          type: recordType,
           checkInTime,
           checkOutTime,
           status,
+          lateMinutes: lateMins > 0 ? lateMins : undefined,
+          earlyMinutes: earlyMins > 0 ? earlyMins : undefined,
+          hasLatePermit: isLatePermit ? true : undefined,
+          hasEarlyPermit: isEarlyPermit ? true : undefined,
           checkInPhoto: existing?.checkInPhoto || emp.avatarUrl,
           checkOutPhoto: existing?.checkOutPhoto || emp.avatarUrl,
           location: {
@@ -335,31 +408,48 @@ export default function AutoAttendanceModal({
 
           </div>
 
-          {/* Options: Realistic Jitter & Overwrite */}
-          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <label className="flex items-center gap-2 text-slate-700 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={useRealisticJitter}
-                onChange={(e) => setUseRealisticJitter(e.target.checked)}
-                className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-              />
-              <span>
-                <strong>Variasi Menit Alami:</strong> Acak menit (2-7 menit sebelum/sesudah jam shift) agar waktu presensi realistis
-              </span>
-            </label>
+          {/* Options: Realistic Jitter & Overwrite & Exclude Leaves */}
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={useRealisticJitter}
+                  onChange={(e) => setUseRealisticJitter(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span>
+                  <strong>Variasi Menit Alami:</strong> Acak menit (2-7 menit sebelum/sesudah jam shift)
+                </span>
+              </label>
 
-            <label className="flex items-center gap-2 text-slate-700 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={overwriteExisting}
-                onChange={(e) => setOverwriteExisting(e.target.checked)}
-                className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-              />
-              <span>
-                <strong>Timpa Data:</strong> Perbarui data jika karyawan sudah ada absen pada tanggal ini
-              </span>
-            </label>
+              <label className="flex items-center gap-2 text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={overwriteExisting}
+                  onChange={(e) => setOverwriteExisting(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span>
+                  <strong>Timpa Data:</strong> Perbarui jika sudah ada absen
+                </span>
+              </label>
+            </div>
+
+            {/* Exclude Approved Leaves Protection */}
+            <div className="pt-2 border-t border-slate-200/80">
+              <label className="flex items-center gap-2 text-amber-900 font-medium cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={excludeApprovedLeave}
+                  onChange={(e) => setExcludeApprovedLeave(e.target.checked)}
+                  className="rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                />
+                <span>
+                  🛡️ <strong>Lindungi Pengajuan Cuti / Izin Disetujui:</strong> Jangan timpa data karyawan yang sedang Cuti, Sakit, atau Dinas Luar ({employeesOnApprovedLeaveOnDate.size} pengajuan aktif pada {targetDate})
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Target Employee Selection & Filter */}
@@ -486,16 +576,37 @@ export default function AutoAttendanceModal({
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        {isAlreadyRecorded ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                            Sudah Ada Data
-                          </span>
-                        ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
-                            Belum Absen
-                          </span>
-                        )}
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                        {(() => {
+                          const leave = employeesOnApprovedLeaveOnDate.get(emp.id);
+                          if (leave) {
+                            const isCuti = leave.type.toLowerCase().includes('cuti');
+                            const badgeColor = isCuti
+                              ? 'bg-teal-50 text-teal-700 border-teal-200'
+                              : leave.type === 'Sakit'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : leave.type === 'Izin Dinas Luar'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-purple-50 text-purple-700 border-purple-200';
+                            return (
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${badgeColor}`}>
+                                {leave.type} Disetujui
+                              </span>
+                            );
+                          }
+                          if (isAlreadyRecorded) {
+                            return (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                                Sudah Ada Data
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                              Belum Absen
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

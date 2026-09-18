@@ -28,9 +28,10 @@ import {
   CheckSquare,
   AlertTriangle,
   Fingerprint,
-  Plane
+  Plane,
+  LogOut
 } from 'lucide-react';
-import { AttendanceRecord, Employee } from '../types';
+import { AttendanceRecord, Employee, LeaveRequest } from '../types';
 import { exportAttendanceToCSV } from '../utils/exportCsv';
 import { formatIndonesianDate } from '../utils/geo';
 import { 
@@ -48,9 +49,10 @@ interface HistoryTableProps {
   employees: Employee[];
   departments: string[];
   currentEmployee: Employee;
+  requests?: LeaveRequest[];
   onOpenManualAttendanceModal?: () => void;
   onOpenAutoAttendanceModal?: () => void;
-  onEditAttendanceRecord?: (record: AttendanceRecord) => void;
+  onEditAttendanceRecord?: (record) => void;
   onDeleteAttendanceRecord?: (recordId: string) => void;
   onDeleteMultipleAttendanceRecords?: (recordIds: string[]) => void;
   onOpenFingerprintModal?: () => void;
@@ -118,8 +120,8 @@ export default function HistoryTable({
     setEndDate('');
   };
 
-  // Filtered records based on period, search, dept, status, employee (only active employees)
-  const filteredRecords = useMemo(() => {
+  // Base records matching period, search, dept, employee (before status filter)
+  const basePeriodRecords = useMemo(() => {
     const activeEmpIdSet = new Set(employees.map((e) => e.id));
     return records.filter((r) => {
       // Abaikan data karyawan yang sudah dihapus dari daftar karyawan
@@ -132,26 +134,52 @@ export default function HistoryTable({
         (r.notes && r.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchDept = selectedDept === 'Semua' || r.department === selectedDept;
-      const matchStatus = selectedStatus === 'Semua' || r.status === selectedStatus;
       const matchEmp = selectedEmployeeId === 'Semua' || r.employeeId === selectedEmployeeId;
 
-      return matchPeriod && matchSearch && matchDept && matchStatus && matchEmp;
+      return matchPeriod && matchSearch && matchDept && matchEmp;
     });
-  }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedStatus, selectedEmployeeId]);
+  }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedEmployeeId]);
 
-  // Period Summary Statistics
+  // Filtered records based on status
+  const filteredRecords = useMemo(() => {
+    if (selectedStatus === 'Semua') return basePeriodRecords;
+    if (selectedStatus === 'Izin Datang Terlambat') {
+      return basePeriodRecords.filter((r) => r.status === 'Terlambat' || (r.lateMinutes && r.lateMinutes > 0) || r.hasLatePermit);
+    }
+    if (selectedStatus === 'Izin Pulang Awal') {
+      return basePeriodRecords.filter((r) => (r.earlyMinutes && r.earlyMinutes > 0) || r.hasEarlyPermit || (r.notes && r.notes.toLowerCase().includes('pulang awal')));
+    }
+    return basePeriodRecords.filter((r) => r.status === selectedStatus);
+  }, [basePeriodRecords, selectedStatus]);
+
+  // Period Summary Statistics (calculated over basePeriodRecords)
   const periodStats = useMemo(() => {
-    const total = filteredRecords.length;
-    const onTime = filteredRecords.filter((r) => r.status === 'Hadir Tepat Waktu').length;
-    const late = filteredRecords.filter((r) => r.status === 'Terlambat').length;
-    const izin = filteredRecords.filter((r) => r.status === 'Izin').length;
-    const cuti = filteredRecords.filter((r) => r.status === 'Cuti').length;
-    const sakit = filteredRecords.filter((r) => r.status === 'Sakit').length;
-    const alpha = filteredRecords.filter((r) => r.status === 'Alpha').length;
-    const manualCount = filteredRecords.filter((r) => r.isManualEntry).length;
+    const total = basePeriodRecords.length;
+    const onTime = basePeriodRecords.filter((r) => r.status === 'Hadir Tepat Waktu').length;
+    const late = basePeriodRecords.filter((r) => r.status === 'Terlambat').length;
+    
+    // Izin Datang Terlambat: Frekuensi (berapa kali) & Total Menit
+    const latePermitRecords = basePeriodRecords.filter((r) => r.status === 'Terlambat' || (r.lateMinutes && r.lateMinutes > 0) || r.hasLatePermit);
+    const latePermitCount = latePermitRecords.length;
+    const lateTotalMinutes = latePermitRecords.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
+    const lateTotalHours = (lateTotalMinutes / 60).toFixed(1);
+
+    // Izin Pulang Awal: Frekuensi (berapa kali) & Total Menit
+    const earlyPermitRecords = basePeriodRecords.filter((r) => (r.earlyMinutes && r.earlyMinutes > 0) || r.hasEarlyPermit || (r.notes && r.notes.toLowerCase().includes('pulang awal')));
+    const earlyPermitCount = earlyPermitRecords.length;
+    const earlyTotalMinutes = earlyPermitRecords.reduce((sum, r) => sum + (r.earlyMinutes || 0), 0);
+    const earlyTotalHours = (earlyTotalMinutes / 60).toFixed(1);
+
+    const izin = basePeriodRecords.filter((r) => r.status === 'Izin').length;
+    const cuti = basePeriodRecords.filter((r) => r.status === 'Cuti').length;
+    const sakit = basePeriodRecords.filter((r) => r.status === 'Sakit').length;
+    const alpha = basePeriodRecords.filter((r) => r.status === 'Alpha').length;
+    const manualCount = basePeriodRecords.filter((r) => r.isManualEntry).length;
 
     const onTimePct = total > 0 ? Math.round((onTime / total) * 100) : 0;
     const latePct = total > 0 ? Math.round((late / total) * 100) : 0;
+    const latePermitPct = total > 0 ? Math.round((latePermitCount / total) * 100) : 0;
+    const earlyPermitPct = total > 0 ? Math.round((earlyPermitCount / total) * 100) : 0;
     const izinPct = total > 0 ? Math.round((izin / total) * 100) : 0;
     const cutiPct = total > 0 ? Math.round((cuti / total) * 100) : 0;
     const sakitPct = total > 0 ? Math.round((sakit / total) * 100) : 0;
@@ -161,6 +189,14 @@ export default function HistoryTable({
       total,
       onTime,
       late,
+      latePermitCount,
+      lateTotalMinutes,
+      lateTotalHours,
+      latePermitPct,
+      earlyPermitCount,
+      earlyTotalMinutes,
+      earlyTotalHours,
+      earlyPermitPct,
       izin,
       cuti,
       sakit,
@@ -173,7 +209,7 @@ export default function HistoryTable({
       sakitPct,
       alphaPct,
     };
-  }, [filteredRecords]);
+  }, [basePeriodRecords]);
 
   const handleExportCSV = () => {
     let periodSuffix = periodPreset;
@@ -486,8 +522,8 @@ export default function HistoryTable({
             </div>
           )}
 
-          {/* Period Summary KPI Cards - Separated Tepat Waktu, Terlambat, Izin, Cuti, Sakit, Alpha */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 mt-3.5" id="period-summary-kpis">
+          {/* Period Summary KPI Cards - Separated Tepat Waktu, Izin Datang Terlambat (Berapa kali & Total Menit), Izin Pulang Awal, Izin, Cuti, Sakit, Alpha */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2.5 mt-3.5" id="period-summary-kpis">
             {/* Total Presensi */}
             <button
               type="button"
@@ -532,25 +568,57 @@ export default function HistoryTable({
               </div>
             </button>
 
-            {/* Terlambat */}
+            {/* Izin Datang Terlambat: Berisi Berapa Kali dan Total Menit */}
             <button
               type="button"
               id="kpi-filter-terlambat"
-              onClick={() => setSelectedStatus(selectedStatus === 'Terlambat' ? 'Semua' : 'Terlambat')}
+              onClick={() => setSelectedStatus(selectedStatus === 'Izin Datang Terlambat' ? 'Semua' : 'Izin Datang Terlambat')}
               className={`text-left bg-white rounded-xl p-2.5 border transition-all cursor-pointer shadow-2xs hover:shadow-xs ${
-                selectedStatus === 'Terlambat'
-                  ? 'border-amber-600 bg-amber-50/40 ring-2 ring-amber-500/20'
-                  : 'border-amber-200/80 hover:border-amber-300'
+                selectedStatus === 'Izin Datang Terlambat' || selectedStatus === 'Terlambat'
+                  ? 'border-amber-600 bg-amber-50/70 ring-2 ring-amber-500/30'
+                  : 'border-amber-200/90 hover:border-amber-400 bg-amber-50/10'
               }`}
-              title="Klik untuk filter: Terlambat"
+              title="Klik untuk filter: Izin Datang Terlambat (Berapa Kali & Total Menit)"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-amber-800 uppercase tracking-wider block">Terlambat</span>
+                <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider block">Izin Terlambat</span>
                 <ClockAlert className="w-3.5 h-3.5 text-amber-600" />
               </div>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-lg font-bold text-amber-700">{periodStats.late}</span>
-                <span className="text-[11px] font-semibold text-amber-800">({periodStats.latePct}%)</span>
+              <div className="mt-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-extrabold text-amber-900">{periodStats.latePermitCount} kali</span>
+                  <span className="text-[10px] text-amber-700 font-bold">({periodStats.latePermitPct}%)</span>
+                </div>
+                <div className="text-[10px] font-mono font-bold text-amber-800 mt-0.5">
+                  ⏱️ {periodStats.lateTotalMinutes} total menit
+                </div>
+              </div>
+            </button>
+
+            {/* Izin Pulang Awal: Berisi Berapa Kali dan Total Menit */}
+            <button
+              type="button"
+              id="kpi-filter-pulang-awal"
+              onClick={() => setSelectedStatus(selectedStatus === 'Izin Pulang Awal' ? 'Semua' : 'Izin Pulang Awal')}
+              className={`text-left bg-white rounded-xl p-2.5 border transition-all cursor-pointer shadow-2xs hover:shadow-xs ${
+                selectedStatus === 'Izin Pulang Awal'
+                  ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/30'
+                  : 'border-indigo-200/90 hover:border-indigo-400 bg-indigo-50/10'
+              }`}
+              title="Klik untuk filter: Izin Pulang Awal (Berapa Kali & Total Menit)"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-indigo-950 uppercase tracking-wider block">Izin Pulang Awal</span>
+                <LogOut className="w-3.5 h-3.5 text-indigo-600" />
+              </div>
+              <div className="mt-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-extrabold text-indigo-950">{periodStats.earlyPermitCount} kali</span>
+                  <span className="text-[10px] text-indigo-700 font-bold">({periodStats.earlyPermitPct}%)</span>
+                </div>
+                <div className="text-[10px] font-mono font-bold text-indigo-900 mt-0.5">
+                  ⏱️ {periodStats.earlyTotalMinutes} total menit
+                </div>
               </div>
             </button>
 
@@ -683,12 +751,14 @@ export default function HistoryTable({
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
             >
               <option value="Semua">Semua Status</option>
-              <option value="Hadir Tepat Waktu">Hadir Tepat Waktu</option>
-              <option value="Terlambat">Terlambat</option>
-              <option value="Izin">Izin</option>
-              <option value="Cuti">Cuti</option>
-              <option value="Sakit">Sakit</option>
-              <option value="Alpha">Alpha</option>
+              <option value="Hadir Tepat Waktu">Hadir Tepat Waktu ({periodStats.onTime})</option>
+              <option value="Izin Datang Terlambat">Izin Datang Terlambat ({periodStats.latePermitCount}x • {periodStats.lateTotalMinutes}m)</option>
+              <option value="Izin Pulang Awal">Izin Pulang Awal ({periodStats.earlyPermitCount}x • {periodStats.earlyTotalMinutes}m)</option>
+              <option value="Terlambat">Terlambat ({periodStats.late})</option>
+              <option value="Izin">Izin ({periodStats.izin})</option>
+              <option value="Cuti">Cuti ({periodStats.cuti})</option>
+              <option value="Sakit">Sakit ({periodStats.sakit})</option>
+              <option value="Alpha">Alpha ({periodStats.alpha})</option>
             </select>
           </div>
 
@@ -766,6 +836,56 @@ export default function HistoryTable({
               <span>Hapus {selectedRecordIds.size} Data Terpilih</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Active Filter Banner: Izin Datang Terlambat */}
+      {(selectedStatus === 'Izin Datang Terlambat' || selectedStatus === 'Terlambat') && (
+        <div className="px-5 py-3 bg-amber-50/90 border-b border-amber-200 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <ClockAlert className="w-4 h-4 text-amber-600 shrink-0" />
+            <div>
+              <span className="font-bold text-amber-900">
+                Filter Rekapitulasi Izin Datang Terlambat Aktif:
+              </span>
+              <span className="text-amber-800 ml-1.5">
+                Ditemukan <strong>{periodStats.latePermitCount} kali kejadian</strong> dengan total akumulasi <strong>{periodStats.lateTotalMinutes} menit</strong> ({periodStats.lateTotalHours} jam) pada periode {getPeriodDisplayLabel(periodPreset, startDate, endDate)}.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="btn-reset-late-filter"
+            onClick={() => setSelectedStatus('Semua')}
+            className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-semibold hover:bg-amber-100 transition-colors cursor-pointer text-[11px]"
+          >
+            Reset Filter
+          </button>
+        </div>
+      )}
+
+      {/* Active Filter Banner: Izin Pulang Awal */}
+      {selectedStatus === 'Izin Pulang Awal' && (
+        <div className="px-5 py-3 bg-indigo-50/90 border-b border-indigo-200 flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <LogOut className="w-4 h-4 text-indigo-600 shrink-0" />
+            <div>
+              <span className="font-bold text-indigo-950">
+                Filter Rekapitulasi Izin Pulang Awal Aktif:
+              </span>
+              <span className="text-indigo-900 ml-1.5">
+                Ditemukan <strong>{periodStats.earlyPermitCount} kali kejadian</strong> dengan total akumulasi <strong>{periodStats.earlyTotalMinutes} menit</strong> ({periodStats.earlyTotalHours} jam) pada periode {getPeriodDisplayLabel(periodPreset, startDate, endDate)}.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="btn-reset-early-filter"
+            onClick={() => setSelectedStatus('Semua')}
+            className="px-2.5 py-1 rounded-lg bg-white border border-indigo-300 text-indigo-900 font-semibold hover:bg-indigo-100 transition-colors cursor-pointer text-[11px]"
+          >
+            Reset Filter
+          </button>
         </div>
       )}
 

@@ -1292,6 +1292,7 @@ export default function App() {
               employees={employees}
               departments={departments}
               currentEmployee={currentEmployee}
+              requests={leaveRequests}
               onOpenManualAttendanceModal={() => handleOpenManualAttendance()}
               onOpenAutoAttendanceModal={() => setIsAutoAttendanceModalOpen(true)}
               onEditAttendanceRecord={(record) => handleOpenManualAttendance(record)}
