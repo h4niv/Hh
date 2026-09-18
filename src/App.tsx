@@ -430,36 +430,62 @@ export default function App() {
         if (req.status !== 'Disetujui') continue;
         const dates = getDatesInRange(req.startDate, req.endDate);
 
+        // Find employee object if needed for accurate metadata
+        const emp = employees.find(e => e.id === req.employeeId);
+        const empName = emp?.name || req.employeeName;
+        const empNik = emp?.nik || req.employeeNik;
+        const empDept = emp?.department || req.department;
+
         for (const d of dates) {
           const existingIdx = updated.findIndex(r => r.employeeId === req.employeeId && r.date === d);
 
           if (req.type === 'Izin Datang Terlambat' || req.type === 'Izin Pulang Awal') {
-            const noteText = req.type === 'Izin Datang Terlambat'
+            const isLateReq = req.type === 'Izin Datang Terlambat';
+            const noteText = isLateReq
               ? `[Izin Terlambat Disetujui: Tiba ${req.estimatedArrivalTime || '-'}, ${req.lateMinutes || 0} mnt]`
               : `[Izin Pulang Awal Disetujui: Pulang ${req.estimatedDepartureTime || '-'}, Awal ${req.earlyDepartureMinutes || 0} mnt]`;
 
             if (existingIdx >= 0) {
               const rec = updated[existingIdx];
-              const needsLate = req.type === 'Izin Datang Terlambat' && !rec.hasLatePermit;
-              const needsEarly = req.type === 'Izin Pulang Awal' && !rec.hasEarlyPermit;
+              const needsLate = isLateReq && !rec.hasLatePermit;
+              const needsEarly = !isLateReq && !rec.hasEarlyPermit;
               const needsNote = !rec.notes || !rec.notes.includes(noteText);
 
               if (needsLate || needsEarly || needsNote) {
                 hasChanges = true;
                 updated[existingIdx] = {
                   ...rec,
-                  hasLatePermit: req.type === 'Izin Datang Terlambat' ? true : rec.hasLatePermit,
-                  hasEarlyPermit: req.type === 'Izin Pulang Awal' ? true : rec.hasEarlyPermit,
-                  lateMinutes: req.type === 'Izin Datang Terlambat' ? (rec.lateMinutes || req.lateMinutes) : rec.lateMinutes,
-                  earlyMinutes: req.type === 'Izin Pulang Awal' ? (rec.earlyMinutes || req.earlyDepartureMinutes) : rec.earlyMinutes,
-                  notes: rec.notes ? (rec.notes.includes(noteText) ? rec.notes : `${rec.notes} • ${noteText}`) : noteText,
+                  hasLatePermit: isLateReq ? true : rec.hasLatePermit,
+                  hasEarlyPermit: !isLateReq ? true : rec.hasEarlyPermit,
+                  lateMinutes: isLateReq ? (rec.lateMinutes || req.lateMinutes) : rec.lateMinutes,
+                  earlyMinutes: !isLateReq ? (rec.earlyMinutes || req.earlyDepartureMinutes) : rec.earlyMinutes,
+                  notes: rec.notes ? (rec.notes.includes(noteText) ? rec.notes : `${rec.notes} • ${noteText}`) : `${noteText} • ${req.reason || ''}`,
                 };
               }
+            } else {
+              // Create an attendance record for this approved permit so it appears in the attendance recap
+              hasChanges = true;
+              updated.unshift({
+                id: `att-permit-${req.id}-${d}`,
+                employeeId: req.employeeId,
+                employeeName: empName,
+                employeeNik: empNik,
+                department: empDept,
+                date: d,
+                type: 'WFO',
+                checkInTime: isLateReq && req.estimatedArrivalTime ? (req.estimatedArrivalTime.length === 5 ? `${req.estimatedArrivalTime}:00` : req.estimatedArrivalTime) : null,
+                checkOutTime: !isLateReq && req.estimatedDepartureTime ? (req.estimatedDepartureTime.length === 5 ? `${req.estimatedDepartureTime}:00` : req.estimatedDepartureTime) : null,
+                status: 'Izin',
+                hasLatePermit: isLateReq,
+                lateMinutes: isLateReq ? req.lateMinutes : undefined,
+                hasEarlyPermit: !isLateReq,
+                earlyMinutes: !isLateReq ? req.earlyDepartureMinutes : undefined,
+                notes: `${noteText} • ${req.reason || ''}${req.approvedBy ? ` (Disetujui: ${req.approvedBy})` : ''}`,
+                isManualEntry: false,
+              });
             }
-            // Note: If no attendance record exists yet for late/early permit, DO NOT create a fake record with arbitrary checkIn/checkOut times.
-            // The employee will clock in with their actual time, and the permit will be applied without penalizing them.
           } else if (req.type === 'Izin Dinas Luar') {
-            const dinasNote = `[Tugas Dinas Luar Disetujui] ${req.reason}`;
+            const dinasNote = `[Tugas Dinas Luar Disetujui] ${req.reason}${req.approvedBy ? ` (Disetujui: ${req.approvedBy})` : ''}`;
             if (existingIdx >= 0) {
               const rec = updated[existingIdx];
               if (rec.type !== 'Dinas Luar' || !rec.notes || !rec.notes.includes(dinasNote)) {
@@ -476,9 +502,9 @@ export default function App() {
               updated.unshift({
                 id: `att-dinas-${req.id}-${d}`,
                 employeeId: req.employeeId,
-                employeeName: req.employeeName,
-                employeeNik: req.employeeNik,
-                department: req.department,
+                employeeName: empName,
+                employeeNik: empNik,
+                department: empDept,
                 date: d,
                 type: 'Dinas Luar',
                 checkInTime: defStartTime,
@@ -491,7 +517,7 @@ export default function App() {
           } else {
             const isCuti = req.type.toLowerCase().includes('cuti');
             const attendanceStatus: AttendanceStatus = req.type === 'Sakit' ? 'Sakit' : (isCuti ? 'Cuti' : 'Izin');
-            const leaveNote = `Pengajuan ${req.type} Disetujui: ${req.reason}`;
+            const leaveNote = `Pengajuan ${req.type} Disetujui: ${req.reason}${req.approvedBy ? ` (Disetujui: ${req.approvedBy})` : ''}`;
 
             if (existingIdx >= 0) {
               const rec = updated[existingIdx];
@@ -510,11 +536,11 @@ export default function App() {
               updated.unshift({
                 id: `att-leave-${req.id}-${d}`,
                 employeeId: req.employeeId,
-                employeeName: req.employeeName,
-                employeeNik: req.employeeNik,
-                department: req.department,
+                employeeName: empName,
+                employeeNik: empNik,
+                department: empDept,
                 date: d,
-                type: 'WFH',
+                type: 'WFO',
                 checkInTime: null,
                 checkOutTime: null,
                 status: attendanceStatus,
@@ -527,12 +553,18 @@ export default function App() {
 
       return hasChanges ? updated : prev;
     });
-  }, [leaveRequests]);
+  }, [leaveRequests, employees, officeConfig]);
 
   // Handle Leave Status Update (Approve / Reject)
   const handleUpdateLeaveStatus = (requestId: string, newStatus: 'Disetujui' | 'Ditolak') => {
     const targetReq = leaveRequests.find((r) => r.id === requestId);
     if (!targetReq) return;
+
+    const approverRoleTitle = currentEmployee.systemRole === 'superadmin' 
+      ? 'Super Admin' 
+      : currentEmployee.systemRole === 'admin' 
+      ? 'Administrator' 
+      : currentEmployee.role;
 
     // Deduct leave quota if approved and type is Cuti Tahunan
     if (newStatus === 'Disetujui' && targetReq.type === 'Cuti Tahunan') {
@@ -547,14 +579,69 @@ export default function App() {
           return emp;
         })
       );
+    } else if (newStatus === 'Ditolak' && targetReq.status === 'Disetujui' && targetReq.type === 'Cuti Tahunan') {
+      // Refund quota if previously approved
+      setEmployees((prev) =>
+        prev.map((emp) => {
+          if (emp.id === targetReq.employeeId) {
+            const updatedEmp = { ...emp, remainingLeaveQuota: emp.remainingLeaveQuota + targetReq.totalDays };
+            syncEmployeeToFirestore(updatedEmp);
+            return updatedEmp;
+          }
+          return emp;
+        })
+      );
     }
 
     const updatedReq: LeaveRequest = {
       ...targetReq,
       status: newStatus,
-      approvedBy: `${currentEmployee.name} (${currentEmployee.systemRole === 'admin' ? 'Administrator' : currentEmployee.role})`,
-      notes: newStatus === 'Disetujui' ? 'Disetujui oleh Administrator' : 'Ditolak oleh Administrator',
+      approvedBy: `${currentEmployee.name} (${approverRoleTitle})`,
+      notes: newStatus === 'Disetujui' 
+        ? `Disetujui oleh ${approverRoleTitle}` 
+        : `Ditolak oleh ${approverRoleTitle}`,
     };
+
+    // If rejecting a previously approved request, clean up or revert attendance records
+    if (newStatus === 'Ditolak' && targetReq.status === 'Disetujui') {
+      const dates = getDatesInRange(targetReq.startDate, targetReq.endDate);
+      setAttendanceRecords((prev) => {
+        return prev
+          .filter((rec) => {
+            if (
+              rec.id.startsWith(`att-leave-${targetReq.id}`) ||
+              rec.id.startsWith(`att-dinas-${targetReq.id}`) ||
+              rec.id.startsWith(`att-permit-${targetReq.id}`)
+            ) {
+              return false;
+            }
+            return true;
+          })
+          .map((rec) => {
+            if (rec.employeeId === targetReq.employeeId && dates.includes(rec.date)) {
+              const updatedRec = { ...rec };
+              if (updatedRec.notes) {
+                const noteParts = updatedRec.notes.split(' • ').filter(
+                  (part) =>
+                    !part.includes(targetReq.reason) &&
+                    !part.includes(targetReq.id) &&
+                    !(targetReq.type === 'Izin Datang Terlambat' && part.includes('Izin Terlambat Disetujui')) &&
+                    !(targetReq.type === 'Izin Pulang Awal' && part.includes('Izin Pulang Awal Disetujui'))
+                );
+                updatedRec.notes = noteParts.join(' • ') || undefined;
+              }
+              if (targetReq.type === 'Izin Datang Terlambat') {
+                updatedRec.hasLatePermit = false;
+              }
+              if (targetReq.type === 'Izin Pulang Awal') {
+                updatedRec.hasEarlyPermit = false;
+              }
+              return updatedRec;
+            }
+            return rec;
+          });
+      });
+    }
 
     // Update request
     setLeaveRequests((prev) =>
@@ -562,8 +649,7 @@ export default function App() {
     );
     syncLeaveRequestToFirestore(updatedReq);
 
-    // If approved, sync across date range (handled automatically by useEffect on leaveRequests, but we can also ensure immediate update)
-    showToast(`Pengajuan ${targetReq.employeeName} telah ${newStatus.toLowerCase()}!`, newStatus === 'Disetujui' ? 'success' : 'info');
+    showToast(`Pengajuan ${targetReq.employeeName} (${targetReq.type}) telah ${newStatus.toLowerCase()}!`, newStatus === 'Disetujui' ? 'success' : 'info');
   };
 
   // Super Admin: Delete Leave Request
@@ -592,7 +678,11 @@ export default function App() {
       setAttendanceRecords((prev) => {
         return prev
           .filter((rec) => {
-            if (rec.id.startsWith(`att-leave-${targetReq.id}`) || rec.id.startsWith(`att-dinas-${targetReq.id}`)) {
+            if (
+              rec.id.startsWith(`att-leave-${targetReq.id}`) ||
+              rec.id.startsWith(`att-dinas-${targetReq.id}`) ||
+              rec.id.startsWith(`att-permit-${targetReq.id}`)
+            ) {
               return false;
             }
             return true;
@@ -684,7 +774,11 @@ export default function App() {
       setAttendanceRecords((prev) => {
         return prev
           .filter((rec) => {
-            if (rec.id.startsWith(`att-leave-${oldReq.id}`) || rec.id.startsWith(`att-dinas-${oldReq.id}`)) {
+            if (
+              rec.id.startsWith(`att-leave-${oldReq.id}`) ||
+              rec.id.startsWith(`att-dinas-${oldReq.id}`) ||
+              rec.id.startsWith(`att-permit-${oldReq.id}`)
+            ) {
               if (removedDates.includes(rec.date)) return false;
             }
             return true;

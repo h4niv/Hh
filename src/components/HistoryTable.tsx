@@ -932,7 +932,11 @@ export default function HistoryTable({
                     <td className="px-4 py-3 whitespace-nowrap font-mono">
                       <div className="font-medium text-slate-800">
                         {record.checkOutTime ? `${record.checkOutTime} WIB` : (
-                          <span className="text-slate-400 italic">Belum Pulang</span>
+                          record.status === 'Cuti' || record.status === 'Sakit' || (record.status === 'Izin' && !record.checkInTime) ? (
+                            <span className="text-slate-400">-</span>
+                          ) : (
+                            <span className="text-slate-400 italic">Belum Pulang</span>
+                          )
                         )}
                       </div>
                       {record.earlyMinutes && record.earlyMinutes > 0 ? (
