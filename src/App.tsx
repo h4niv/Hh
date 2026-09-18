@@ -43,6 +43,7 @@ import ManualAttendanceModal from './components/ManualAttendanceModal';
 import AutoAttendanceModal from './components/AutoAttendanceModal';
 import PermitRecapDashboard from './components/PermitRecapDashboard';
 import FingerprintModal from './components/FingerprintModal';
+import AndroidAppModal from './components/AndroidAppModal';
 import {
   syncAttendanceRecordToFirestore,
   deleteAttendanceRecordFromFirestore,
@@ -148,6 +149,7 @@ export default function App() {
   const [isManualAttendanceModalOpen, setIsManualAttendanceModalOpen] = useState<boolean>(false);
   const [isAutoAttendanceModalOpen, setIsAutoAttendanceModalOpen] = useState<boolean>(false);
   const [isFingerprintModalOpen, setIsFingerprintModalOpen] = useState<boolean>(false);
+  const [isAndroidModalOpen, setIsAndroidModalOpen] = useState<boolean>(false);
   const [editingAttendanceRecord, setEditingAttendanceRecord] = useState<AttendanceRecord | null>(null);
 
   // Notification Toast
@@ -1084,6 +1086,7 @@ export default function App() {
         }}
         cloudSyncStatus={cloudSyncStatus}
         onForceSync={handleForceSyncAll}
+        onOpenAndroidModal={() => setIsAndroidModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -1452,17 +1455,31 @@ export default function App() {
         }}
       />
 
+      {/* Android PWA & Native APK Guidance Modal */}
+      <AndroidAppModal
+        isOpen={isAndroidModalOpen}
+        onClose={() => setIsAndroidModalOpen(false)}
+      />
+
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-700">AbsensiPro</span>
             <span>• Sistem Presensi Karyawan Terintegrasi</span>
           </div>
           <div className="flex items-center gap-3">
-            <span>SCBD, Jakarta Selatan</span>
-            <span>•</span>
-            <span>Waktu Server: WIB (UTC+7)</span>
+            <button
+              type="button"
+              id="btn-footer-android"
+              onClick={() => setIsAndroidModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 cursor-pointer transition-colors"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Versi Mobile Android (PWA & APK)</span>
+            </button>
+            <span className="hidden sm:inline">•</span>
+            <span className="hidden sm:inline">Waktu Server: WIB (UTC+7)</span>
           </div>
         </div>
       </footer>

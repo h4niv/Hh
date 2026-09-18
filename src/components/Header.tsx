@@ -19,9 +19,11 @@ import {
   X,
   Sparkles,
   Cloud,
-  RefreshCw
+  RefreshCw,
+  Smartphone
 } from 'lucide-react';
 import { Employee, OfficeConfig } from '../types';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   currentEmployee: Employee;
@@ -34,6 +36,7 @@ interface HeaderProps {
   onOpenAddEmployeeModal?: () => void;
   cloudSyncStatus?: 'connected' | 'syncing' | 'offline';
   onForceSync?: () => void;
+  onOpenAndroidModal?: () => void;
 }
 
 export default function Header({
@@ -47,6 +50,7 @@ export default function Header({
   onOpenAddEmployeeModal,
   cloudSyncStatus = 'connected',
   onForceSync,
+  onOpenAndroidModal,
 }: HeaderProps) {
   const [time, setTime] = useState(new Date());
   const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
@@ -231,10 +235,11 @@ export default function Header({
             </div>
           </div>
 
-          {/* Right: Employee Profile Switcher with Role Badge */}
-          <div className="relative">
+          {/* Right: Employee Profile Switcher with Role Badge and Android Button */}
+          <div className="relative flex items-center gap-2">
+            <PWAInstallButton onOpenAndroidModal={onOpenAndroidModal} />
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 hidden sm:inline">Pengguna Aktif:</span>
+              <span className="text-xs text-slate-500 hidden xl:inline">Pengguna:</span>
               <button
                 type="button"
                 id="employee-selector-btn"
