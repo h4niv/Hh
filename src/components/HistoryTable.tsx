@@ -385,11 +385,11 @@ export default function HistoryTable({
                 type="button"
                 id="btn-open-fingerprint-modal"
                 onClick={onOpenFingerprintModal}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                title="Koneksikan mesin fingerprint dan import log absensi"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                title="Koneksikan mesin fingerprint Solution via IP dan sinkronkan log presensi"
               >
                 <Fingerprint className="w-3.5 h-3.5" />
-                <span>Mesin Fingerprint</span>
+                <span>Mesin Solution (IP)</span>
               </button>
             )}
 
