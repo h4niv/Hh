@@ -42,6 +42,7 @@ export interface Employee {
   avatarUrl: string;
   shift: ShiftInfo;
   remainingLeaveQuota: number;
+  fingerprintPin?: string; // No PIN/ID pendaftaran pada mesin sidik jari Solution
 }
 
 export interface GeoLocationData {

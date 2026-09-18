@@ -1437,6 +1437,10 @@ export default function App() {
         officeConfig={officeConfig}
         employees={employees}
         attendanceRecords={attendanceRecords}
+        onUpdateEmployees={(updated) => {
+          setEmployees(updated);
+          updated.forEach(e => syncEmployeeToFirestore(e));
+        }}
         onAddOrUpdateRecords={(newRecs) => {
           setAttendanceRecords((prev) => {
             const map = new Map(prev.map(r => [`${r.employeeId}-${r.date}`, r]));
