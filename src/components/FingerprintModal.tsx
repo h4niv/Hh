@@ -16,7 +16,7 @@ import {
   User
 } from 'lucide-react';
 import { Employee, AttendanceRecord, OfficeConfig } from '../types';
-import { generateNodeSyncAgentCode, generatePackageJson, generateWindowsBatchScript, SyncAgentConfig } from '../utils/syncAgentTemplates';
+import { generateNodeSyncAgentCode, generatePackageJson, generateWindowsBatchScript, generatePythonSyncAgentCode, SyncAgentConfig } from '../utils/syncAgentTemplates';
 import { calculateLateMinutes, calculateEarlyMinutes, getTodayDateString } from '../utils/geo';
 
 interface FingerprintModalProps {
@@ -36,7 +36,7 @@ export default function FingerprintModal({
   attendanceRecords,
   onAddOrUpdateRecords,
 }: FingerprintModalProps) {
-  const [activeTab, setActiveTab] = useState<'agent' | 'upload' | 'simulate' | 'guide' | 'error-guide'>('agent');
+  const [activeTab, setActiveTab] = useState<'agent' | 'android' | 'upload' | 'simulate' | 'guide' | 'error-guide'>('agent');
   const [copied, setCopied] = useState<boolean>(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -98,6 +98,19 @@ export default function FingerprintModal({
     const a = document.createElement('a');
     a.href = url;
     a.download = 'package.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPython = () => {
+    const pyCode = generatePythonSyncAgentCode(agentConfig);
+    const blob = new Blob([pyCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sync_agent.py';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -337,6 +350,17 @@ export default function FingerprintModal({
           >
             <Server className="w-3.5 h-3.5" />
             <span>Agent Sinkronisasi LAN</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('android')}
+            className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+              activeTab === 'android'
+                ? 'border-emerald-600 text-emerald-600 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Versi Android (Termux)</span>
           </button>
           <button
             onClick={() => setActiveTab('simulate')}
@@ -595,6 +619,51 @@ export default function FingerprintModal({
                 <pre className="p-3 bg-slate-900 text-slate-200 text-[10px] font-mono rounded-xl max-h-40 overflow-y-auto">
                   {scriptCode}
                 </pre>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'android' && (
+            <div className="space-y-4 text-xs text-slate-700 leading-relaxed">
+              <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 space-y-1.5">
+                <p className="font-bold flex items-center gap-1.5 text-emerald-800">
+                  <Wifi className="w-4 h-4 text-emerald-600" />
+                  AbsensiPro Sync Agent untuk Android (Termux)
+                </p>
+                <p className="text-[11px] text-emerald-700">
+                  Jika komputer kantor berhalangan atau sering mati, Anda bisa menggunakan <strong>HP Android bekas / Android TV Box</strong> yang terhubung ke Wi-Fi yang sama dengan mesin fingerprint untuk menjalankan script sinkronisasi 24 jam non-stop menggunakan aplikasi <strong>Termux</strong>!
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <p className="font-bold text-slate-900">Langkah-Langkah Instalasi di HP Android:</p>
+                  <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-slate-600">
+                    <li>Unduh & instal aplikasi <strong>Termux</strong> (dari F-Droid atau GitHub resmi Termux).</li>
+                    <li>Buka Termux dan jalankan perintah berikut untuk menginstal Python & modul pendukung:
+                      <div className="p-2 bg-slate-900 text-emerald-400 font-mono text-[10px] rounded-lg mt-1 select-all">
+                        pkg update && pkg install python git -y && pip install pyzk requests
+                      </div>
+                    </li>
+                    <li>Unduh file script Python sync agent di bawah ini ke HP Android Anda:
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={handleDownloadPython}
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download sync_agent.py (Python)</span>
+                        </button>
+                      </div>
+                    </li>
+                    <li>Pindahkan file <code>sync_agent.py</code> ke folder utama Termux, lalu jalankan perintah:
+                      <div className="p-2 bg-slate-900 text-emerald-400 font-mono text-[10px] rounded-lg mt-1 select-all">
+                        python sync_agent.py
+                      </div>
+                    </li>
+                  </ol>
+                </div>
               </div>
             </div>
           )}

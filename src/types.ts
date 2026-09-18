@@ -4,6 +4,7 @@ export type AttendanceStatus =
   | 'Hadir Tepat Waktu'
   | 'Terlambat'
   | 'Izin'
+  | 'Cuti'
   | 'Sakit'
   | 'Alpha';
 

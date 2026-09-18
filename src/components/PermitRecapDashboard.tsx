@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Clock, 
   ClockAlert, 
@@ -17,9 +17,12 @@ import {
   CalendarClock, 
   BarChart3,
   ListFilter,
-  ShieldCheck
+  ShieldCheck,
+  Pencil,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
-import { LeaveRequest, Employee, OfficeConfig } from '../types';
+import { LeaveRequest, LeaveStatus, Employee, OfficeConfig } from '../types';
 import { getTodayDateString } from '../utils/geo';
 
 interface PermitRecapDashboardProps {
@@ -30,6 +33,8 @@ interface PermitRecapDashboardProps {
   onNavigateToLeaveManagement: () => void;
   onOpenLeaveModal?: (defaultType?: 'Izin Datang Terlambat' | 'Izin Pulang Awal') => void;
   onUpdateStatus?: (requestId: string, newStatus: 'Disetujui' | 'Ditolak') => void;
+  onEditRequest?: (updatedReq: LeaveRequest) => void;
+  onDeleteRequest?: (requestId: string) => void;
 }
 
 export default function PermitRecapDashboard({
@@ -40,6 +45,8 @@ export default function PermitRecapDashboard({
   onNavigateToLeaveManagement,
   onOpenLeaveModal,
   onUpdateStatus,
+  onEditRequest,
+  onDeleteRequest,
 }: PermitRecapDashboardProps) {
   const [activeTab, setActiveTab] = useState<'today' | 'monthly_summary' | 'department_stats'>('today');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -50,6 +57,57 @@ export default function PermitRecapDashboard({
 
   const todayStr = getTodayDateString();
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
+  const isSuperAdmin = currentEmployee.systemRole === 'superadmin' || currentEmployee.role.toLowerCase().includes('super');
+
+  // Super Admin: Edit and Delete state
+  const [editingRequest, setEditingRequest] = useState<LeaveRequest | null>(null);
+  const [requestToDelete, setRequestToDelete] = useState<LeaveRequest | null>(null);
+
+  const [editReason, setEditReason] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<LeaveStatus>('Menunggu');
+  const [editTime, setEditTime] = useState<string>('');
+  const [editMinutes, setEditMinutes] = useState<number>(30);
+  const [editNotes, setEditNotes] = useState<string>('');
+
+  const handleOpenEdit = (req: LeaveRequest) => {
+    setEditingRequest(req);
+    setEditReason(req.reason);
+    setEditStatus(req.status);
+    setEditNotes(req.notes || '');
+    if (req.type === 'Izin Datang Terlambat') {
+      setEditTime(req.estimatedArrivalTime || '09:00');
+      setEditMinutes(req.lateMinutes || 30);
+    } else {
+      setEditTime(req.estimatedDepartureTime || '16:30');
+      setEditMinutes(req.earlyDepartureMinutes || 60);
+    }
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRequest || !onEditRequest) return;
+
+    const updated: LeaveRequest = {
+      ...editingRequest,
+      reason: editReason.trim() || editingRequest.reason,
+      status: editStatus,
+      notes: editNotes.trim() || undefined,
+      approvedBy: editStatus !== 'Menunggu' ? `${currentEmployee.name} (Super Admin)` : undefined,
+      estimatedArrivalTime: editingRequest.type === 'Izin Datang Terlambat' ? editTime : undefined,
+      lateMinutes: editingRequest.type === 'Izin Datang Terlambat' ? editMinutes : undefined,
+      estimatedDepartureTime: editingRequest.type === 'Izin Pulang Awal' ? editTime : undefined,
+      earlyDepartureMinutes: editingRequest.type === 'Izin Pulang Awal' ? editMinutes : undefined,
+    };
+
+    onEditRequest(updated);
+    setEditingRequest(null);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!requestToDelete || !onDeleteRequest) return;
+    onDeleteRequest(requestToDelete.id);
+    setRequestToDelete(null);
+  };
 
   // Config limits
   const maxLateCount = officeConfig?.maxLatePermitCountPerMonth ?? 3;
@@ -63,14 +121,16 @@ export default function PermitRecapDashboard({
     return ['Semua', ...Array.from(set)];
   }, [employees]);
 
-  // Today's permits
+  const activeEmpIdSet = useMemo(() => new Set(employees.map(e => e.id)), [employees]);
+
+  // Today's permits (only active employees)
   const todayLateRequests = useMemo(() => {
-    return requests.filter(r => r.type === 'Izin Datang Terlambat' && r.startDate <= todayStr && r.endDate >= todayStr);
-  }, [requests, todayStr]);
+    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat' && r.startDate <= todayStr && r.endDate >= todayStr);
+  }, [requests, activeEmpIdSet, todayStr]);
 
   const todayEarlyRequests = useMemo(() => {
-    return requests.filter(r => r.type === 'Izin Pulang Awal' && r.startDate <= todayStr && r.endDate >= todayStr);
-  }, [requests, todayStr]);
+    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Pulang Awal' && r.startDate <= todayStr && r.endDate >= todayStr);
+  }, [requests, activeEmpIdSet, todayStr]);
 
   const todayTotalLateMinutes = useMemo(() => {
     return todayLateRequests.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
@@ -80,14 +140,14 @@ export default function PermitRecapDashboard({
     return todayEarlyRequests.reduce((sum, r) => sum + (r.earlyDepartureMinutes || 0), 0);
   }, [todayEarlyRequests]);
 
-  // Selected Month permits (All employees)
+  // Selected Month permits (All active employees)
   const monthlyLateRequests = useMemo(() => {
-    return requests.filter(r => r.type === 'Izin Datang Terlambat' && r.startDate.startsWith(selectedMonth));
-  }, [requests, selectedMonth]);
+    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat' && r.startDate.startsWith(selectedMonth));
+  }, [requests, activeEmpIdSet, selectedMonth]);
 
   const monthlyEarlyRequests = useMemo(() => {
-    return requests.filter(r => r.type === 'Izin Pulang Awal' && r.startDate.startsWith(selectedMonth));
-  }, [requests, selectedMonth]);
+    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Pulang Awal' && r.startDate.startsWith(selectedMonth));
+  }, [requests, activeEmpIdSet, selectedMonth]);
 
   const monthlyTotalLateMinutes = useMemo(() => {
     return monthlyLateRequests.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
@@ -582,25 +642,55 @@ export default function PermitRecapDashboard({
                       </span>
                     </div>
 
-                    {/* HR Quick Action if Admin and Pending */}
-                    {isPending && isAdminOrSuper && onUpdateStatus && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onUpdateStatus(req.id, 'Disetujui')}
-                          className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
-                        >
-                          <Check className="w-3 h-3" /> Terima
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onUpdateStatus(req.id, 'Ditolak')}
-                          className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-rose-100 hover:text-rose-700 text-slate-600 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <X className="w-3 h-3" /> Tolak
-                        </button>
-                      </div>
-                    )}
+                    {/* HR Action buttons & Super Admin Edit/Delete */}
+                    <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
+                      {isPending && isAdminOrSuper && onUpdateStatus && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onUpdateStatus(req.id, 'Disetujui')}
+                            className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                            title="Setujui permohonan"
+                          >
+                            <Check className="w-3 h-3" /> Terima
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateStatus(req.id, 'Ditolak')}
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-rose-100 hover:text-rose-700 text-slate-600 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Tolak permohonan"
+                          >
+                            <X className="w-3 h-3" /> Tolak
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Super Admin Edit & Delete Buttons */}
+                      {isSuperAdmin && (
+                        <div className="flex items-center gap-1">
+                          {onEditRequest && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(req)}
+                              className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Edit permohonan izin (Super Admin)"
+                            >
+                              <Pencil className="w-3 h-3 text-blue-600" /> Edit
+                            </button>
+                          )}
+                          {onDeleteRequest && (
+                            <button
+                              type="button"
+                              onClick={() => setRequestToDelete(req)}
+                              className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Hapus data izin (Super Admin)"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" /> Hapus
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -800,6 +890,149 @@ export default function PermitRecapDashboard({
           Buka Manajemen Izin & Cuti &rarr;
         </button>
       </div>
+
+      {/* QUICK EDIT MODAL FOR PERMIT RECAP (SUPER ADMIN) */}
+      {editingRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">Edit Izin {editingRequest.type}</h4>
+                  <p className="text-[11px] text-slate-500">{editingRequest.employeeName} ({editingRequest.employeeNik})</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRequest(null)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {editingRequest.type === 'Izin Datang Terlambat' ? 'Estimasi Tiba' : 'Estimasi Pulang'}
+                  </label>
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-800"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Durasi (Menit)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="480"
+                    value={editMinutes}
+                    onChange={(e) => setEditMinutes(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-slate-800"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Status Pengajuan</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as LeaveStatus)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800"
+                >
+                  <option value="Menunggu">⏳ Menunggu</option>
+                  <option value="Disetujui">✅ Disetujui</option>
+                  <option value="Ditolak">❌ Ditolak</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Alasan</label>
+                <textarea
+                  rows={2}
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Catatan HR / Super Admin</label>
+                <input
+                  type="text"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Catatan persetujuan / revisi..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingRequest(null)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer font-medium"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer flex items-center gap-1"
+                >
+                  <Check className="w-3.5 h-3.5" /> Simpan Perubahan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK DELETE CONFIRMATION DIALOG (SUPER ADMIN) */}
+      {requestToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-3.5">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+              <Trash2 className="w-5 h-5" />
+            </div>
+
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">Hapus Izin {requestToDelete.type}?</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                Data izin milik <strong>{requestToDelete.employeeName}</strong> ({requestToDelete.startDate}) akan dihapus secara permanen.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setRequestToDelete(null)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white shadow-xs cursor-pointer flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Hapus Izin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

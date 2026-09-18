@@ -24,13 +24,14 @@ import {
   UserX,
   Sparkles
 } from 'lucide-react';
-import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee } from '../types';
+import { AttendanceRecord, AttendanceStatus, AttendanceType, Employee, OfficeConfig } from '../types';
 import { calculateLateMinutes, calculateEarlyMinutes } from '../utils/geo';
 
 interface ManualAttendanceModalProps {
   isOpen: boolean;
   onClose: () => void;
   employees: Employee[];
+  officeConfig?: OfficeConfig;
   initialEmployeeId?: string;
   initialRecord?: AttendanceRecord | null;
   currentEmployee?: Employee;
@@ -63,6 +64,7 @@ export default function ManualAttendanceModal({
   isOpen,
   onClose,
   employees,
+  officeConfig,
   initialEmployeeId,
   initialRecord,
   currentEmployee,
@@ -100,12 +102,16 @@ export default function ManualAttendanceModal({
     return '';
   });
   const [dinasSptNumber, setDinasSptNumber] = useState<string>('');
-  const [checkInTime, setCheckInTime] = useState<string>(
-    initialRecord?.checkInTime ? initialRecord.checkInTime.slice(0, 5) : '08:30'
-  );
-  const [checkOutTime, setCheckOutTime] = useState<string>(
-    initialRecord?.checkOutTime ? initialRecord.checkOutTime.slice(0, 5) : '17:30'
-  );
+  const [checkInTime, setCheckInTime] = useState<string>(() => {
+    if (initialRecord?.checkInTime) return initialRecord.checkInTime.slice(0, 5);
+    const defEmp = employees.find(e => e.id === (initialEmployeeId || employees[0]?.id));
+    return defEmp?.shift?.startTime || officeConfig?.workStartTime || '08:30';
+  });
+  const [checkOutTime, setCheckOutTime] = useState<string>(() => {
+    if (initialRecord?.checkOutTime) return initialRecord.checkOutTime.slice(0, 5);
+    const defEmp = employees.find(e => e.id === (initialEmployeeId || employees[0]?.id));
+    return defEmp?.shift?.endTime || officeConfig?.workEndTime || '17:30';
+  });
   const [hasNoCheckOut, setHasNoCheckOut] = useState<boolean>(
     initialRecord ? !initialRecord.checkOutTime : false
   );
@@ -146,8 +152,8 @@ export default function ManualAttendanceModal({
           : ''
       );
       setDinasSptNumber('');
-      setCheckInTime(initialRecord.checkInTime ? initialRecord.checkInTime.slice(0, 5) : '08:30');
-      setCheckOutTime(initialRecord.checkOutTime ? initialRecord.checkOutTime.slice(0, 5) : '17:30');
+      setCheckInTime(initialRecord.checkInTime ? initialRecord.checkInTime.slice(0, 5) : (officeConfig?.workStartTime || '08:30'));
+      setCheckOutTime(initialRecord.checkOutTime ? initialRecord.checkOutTime.slice(0, 5) : (officeConfig?.workEndTime || '17:30'));
       setHasNoCheckIn(!initialRecord.checkInTime);
       setHasNoCheckOut(!initialRecord.checkOutTime);
       setHasLatePermit(Boolean(initialRecord.hasLatePermit));
@@ -156,14 +162,15 @@ export default function ManualAttendanceModal({
       setIsStatusManuallyOverridden(true);
       setNotes(initialRecord.notes || '');
     } else {
-      setSelectedEmpId(initialEmployeeId || (employees[0]?.id || ''));
+      const initEmp = employees.find(e => e.id === (initialEmployeeId || employees[0]?.id));
+      setSelectedEmpId(initEmp?.id || (employees[0]?.id || ''));
       setSelectedBulkEmpIds(employees.map((e) => e.id));
       setDate(new Date().toISOString().slice(0, 10));
       setAttendanceType('WFO');
       setDinasLocation('');
       setDinasSptNumber('');
-      setCheckInTime('08:30');
-      setCheckOutTime('17:30');
+      setCheckInTime(initEmp?.shift?.startTime || officeConfig?.workStartTime || '08:30');
+      setCheckOutTime(initEmp?.shift?.endTime || officeConfig?.workEndTime || '17:30');
       setHasNoCheckIn(false);
       setHasNoCheckOut(false);
       setHasLatePermit(false);
@@ -172,7 +179,7 @@ export default function ManualAttendanceModal({
       setNotes('');
       setFormError(null);
     }
-  }, [initialRecord, initialEmployeeId, isOpen, employees]);
+  }, [initialRecord, initialEmployeeId, isOpen, employees, officeConfig]);
 
   // Current selected employee object in single mode
   const selectedEmployee = useMemo(() => {
@@ -360,8 +367,8 @@ export default function ManualAttendanceModal({
 
       const targetEmployees = employees.filter((emp) => selectedBulkEmpIds.includes(emp.id));
       const recordsToSave: AttendanceRecord[] = targetEmployees.map((emp) => {
-        const empShiftStart = emp.shift?.startTime || '08:30';
-        const empShiftEnd = emp.shift?.endTime || '17:30';
+        const empShiftStart = emp.shift?.startTime || officeConfig?.workStartTime || '08:30';
+        const empShiftEnd = emp.shift?.endTime || officeConfig?.workEndTime || '17:30';
         const lateMins = calculateLateMinutes(finalCheckIn, empShiftStart);
         const earlyMins = calculateEarlyMinutes(finalCheckOut, empShiftEnd, finalCheckIn, empShiftStart);
 
@@ -407,8 +414,8 @@ export default function ManualAttendanceModal({
       return;
     }
 
-    const singleShiftStart = selectedEmployee.shift?.startTime || '08:30';
-    const singleShiftEnd = selectedEmployee.shift?.endTime || '17:30';
+    const singleShiftStart = selectedEmployee.shift?.startTime || officeConfig?.workStartTime || '08:30';
+    const singleShiftEnd = selectedEmployee.shift?.endTime || officeConfig?.workEndTime || '17:30';
     const singleLateMins = calculateLateMinutes(finalCheckIn, singleShiftStart);
     const singleEarlyMins = calculateEarlyMinutes(finalCheckOut, singleShiftEnd, finalCheckIn, singleShiftStart);
 
@@ -855,11 +862,11 @@ export default function ManualAttendanceModal({
                       setIsStatusManuallyOverridden(false);
                     }
                     if (hasNoCheckIn || !checkInTime) {
-                      setCheckInTime('08:30');
+                      setCheckInTime(selectedEmployee?.shift?.startTime || officeConfig?.workStartTime || '08:30');
                       setHasNoCheckIn(false);
                     }
                     if (hasNoCheckOut || !checkOutTime) {
-                      setCheckOutTime('17:30');
+                      setCheckOutTime(selectedEmployee?.shift?.endTime || officeConfig?.workEndTime || '17:30');
                       setHasNoCheckOut(false);
                     }
                   }}
@@ -1122,7 +1129,7 @@ export default function ManualAttendanceModal({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {(['Hadir Tepat Waktu', 'Terlambat', 'Izin', 'Sakit', 'Alpha'] as AttendanceStatus[]).map((st) => (
+              {(['Hadir Tepat Waktu', 'Terlambat', 'Izin', 'Cuti', 'Sakit', 'Alpha'] as AttendanceStatus[]).map((st) => (
                 <button
                   key={st}
                   type="button"
@@ -1137,7 +1144,7 @@ export default function ManualAttendanceModal({
                       if (!notes || notes === 'Lupa melakukan presensi') {
                         setNotes('Tidak hadir tanpa konfirmasi / keterangan (Alpha manual)');
                       }
-                    } else if (st === 'Izin' || st === 'Sakit') {
+                    } else if (st === 'Izin' || st === 'Cuti' || st === 'Sakit') {
                       setHasNoCheckIn(true);
                       setHasNoCheckOut(true);
                     }
@@ -1150,6 +1157,8 @@ export default function ManualAttendanceModal({
                         ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                         : st === 'Alpha'
                         ? 'bg-rose-600 text-white border-rose-600 shadow-xs ring-2 ring-rose-500/20'
+                        : st === 'Cuti'
+                        ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
                         : 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}

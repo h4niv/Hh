@@ -17,7 +17,9 @@ import {
   Lock,
   Search,
   X,
-  Sparkles
+  Sparkles,
+  Cloud,
+  RefreshCw
 } from 'lucide-react';
 import { Employee, OfficeConfig } from '../types';
 
@@ -30,6 +32,8 @@ interface HeaderProps {
   officeConfig: OfficeConfig;
   onOpenOfficeModal: () => void;
   onOpenAddEmployeeModal?: () => void;
+  cloudSyncStatus?: 'connected' | 'syncing' | 'offline';
+  onForceSync?: () => void;
 }
 
 export default function Header({
@@ -41,6 +45,8 @@ export default function Header({
   officeConfig,
   onOpenOfficeModal,
   onOpenAddEmployeeModal,
+  cloudSyncStatus = 'connected',
+  onForceSync,
 }: HeaderProps) {
   const [time, setTime] = useState(new Date());
   const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
@@ -163,6 +169,40 @@ export default function Header({
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium border border-blue-200">
                   Enterprise HR
                 </span>
+                <div 
+                  className={`hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${
+                    cloudSyncStatus === 'syncing'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : cloudSyncStatus === 'offline'
+                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  }`}
+                  title="Sinkronisasi otomatis ke Firebase Firestore (plated-climber-w53bd)"
+                >
+                  <span className="relative flex h-1.5 w-1.5">
+                    {cloudSyncStatus === 'connected' && (
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    )}
+                    <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                      cloudSyncStatus === 'syncing' ? 'bg-amber-500 animate-spin' : cloudSyncStatus === 'offline' ? 'bg-slate-400' : 'bg-emerald-500'
+                    }`}></span>
+                  </span>
+                  <Cloud className="w-3 h-3" />
+                  <span>{cloudSyncStatus === 'syncing' ? 'Menyinkronkan...' : 'Firebase Cloud Sync'}</span>
+                  {onForceSync && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onForceSync();
+                      }}
+                      title="Klik untuk paksa sinkronisasi ulang semua data ke Firebase"
+                      className="ml-0.5 hover:rotate-180 transition-transform cursor-pointer p-0.5 rounded text-emerald-600 hover:text-emerald-800"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
               </div>
               <button
                 type="button"

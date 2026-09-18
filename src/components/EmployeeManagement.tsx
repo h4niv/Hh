@@ -28,13 +28,14 @@ import {
   Crown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Employee, ShiftInfo, SystemRole } from '../types';
+import { Employee, ShiftInfo, SystemRole, OfficeConfig } from '../types';
 import ImportEmployeeModal from './ImportEmployeeModal';
 
 interface EmployeeManagementProps {
   employees: Employee[];
   currentEmployee: Employee;
   departments: string[];
+  officeConfig?: OfficeConfig;
   onSelectEmployee: (employee: Employee) => void;
   onAddEmployee: (employee: Omit<Employee, 'id'>) => void;
   onEditEmployee: (employee: Employee) => void;
@@ -60,6 +61,7 @@ export default function EmployeeManagement({
   employees,
   currentEmployee,
   departments,
+  officeConfig,
   onSelectEmployee,
   onAddEmployee,
   onEditEmployee,
@@ -89,9 +91,9 @@ export default function EmployeeManagement({
   const [avatarUrl, setAvatarUrl] = useState(PRESET_AVATARS[0]);
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
   const [shiftName, setShiftName] = useState('Reguler');
-  const [workStartTime, setWorkStartTime] = useState('08:30');
-  const [workEndTime, setWorkEndTime] = useState('17:30');
-  const [lateTolerance, setLateTolerance] = useState(15);
+  const [workStartTime, setWorkStartTime] = useState(officeConfig?.workStartTime || '08:30');
+  const [workEndTime, setWorkEndTime] = useState(officeConfig?.workEndTime || '17:30');
+  const [lateTolerance, setLateTolerance] = useState(officeConfig?.lateToleranceMinutes || 15);
   const [leaveQuota, setLeaveQuota] = useState(12);
 
   // Filters
@@ -116,9 +118,9 @@ export default function EmployeeManagement({
     setAvatarUrl(PRESET_AVATARS[nextNum % PRESET_AVATARS.length]);
     setCustomAvatarUrl('');
     setShiftName('Reguler');
-    setWorkStartTime('08:30');
-    setWorkEndTime('17:30');
-    setLateTolerance(15);
+    setWorkStartTime(officeConfig?.workStartTime || '08:30');
+    setWorkEndTime(officeConfig?.workEndTime || '17:30');
+    setLateTolerance(officeConfig?.lateToleranceMinutes || 15);
     setLeaveQuota(12);
     setFormError(null);
     setIsModalOpen(true);
@@ -1133,7 +1135,7 @@ export default function EmployeeManagement({
                   Hapus Data Karyawan?
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Apakah Anda yakin ingin menghapus data karyawan <strong className="text-slate-900">{employeeToDelete.name}</strong> ({employeeToDelete.nik})? Data ini akan dihapus dari sistem presensi.
+                  Apakah Anda yakin ingin menghapus data karyawan <strong className="text-slate-900">{employeeToDelete.name}</strong> ({employeeToDelete.nik})? Data profil beserta seluruh catatan riwayat absensi dan pengajuan izin karyawan ini akan dihapus secara menyeluruh dari sistem dan rekapitulasi.
                 </p>
 
                 {isDeletingLastAdmin && (

@@ -1,6 +1,6 @@
 {
   "name": "Sistem Absensi Karyawan",
-  "description": "Aplikasi absensi online karyawan dengan role Superadministrator, Administrator, & Karyawan, input presensi manual & otomatis semua user, verifikasi selfie & validasi GPS, persetujuan cuti tim, dan ekspor spreadsheet Excel.",
+  "description": "Aplikasi absensi online karyawan dengan sinkronisasi otomatis Firebase Firestore, multi-role (Superadmin, Admin, Karyawan), absensi selfie & GPS, manajemen cuti, presensi fingerprint, dan rekapitulasi data.",
   "requestFramePermissions": ["camera", "geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

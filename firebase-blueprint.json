@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "Employee": {
+      "collection": "employees",
+      "fields": {
+        "id": { "type": "string", "description": "Unique employee ID" },
+        "name": { "type": "string", "description": "Full name" },
+        "email": { "type": "string", "description": "Email address" },
+        "nik": { "type": "string", "description": "Employee ID number" },
+        "department": { "type": "string", "description": "Department" },
+        "position": { "type": "string", "description": "Position" },
+        "avatar": { "type": "string", "description": "Avatar image URL" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "joinDate": { "type": "string", "description": "Join date ISO" },
+        "role": { "type": "string", "description": "Display role" },
+        "systemRole": { "type": "string", "description": "System role (superadmin, admin, employee)" },
+        "remainingLeaveQuota": { "type": "number", "description": "Remaining leave quota" }
+      }
+    },
+    "AttendanceRecord": {
+      "collection": "attendance_records",
+      "fields": {
+        "id": { "type": "string", "description": "Record ID" },
+        "employeeId": { "type": "string", "description": "Employee ID" },
+        "employeeName": { "type": "string", "description": "Employee name" },
+        "employeeNik": { "type": "string", "description": "Employee NIK" },
+        "department": { "type": "string", "description": "Department" },
+        "date": { "type": "string", "description": "Date YYYY-MM-DD" },
+        "checkInTime": { "type": "string", "description": "Check in time HH:mm:ss" },
+        "checkOutTime": { "type": "string", "description": "Check out time HH:mm:ss" },
+        "status": { "type": "string", "description": "Attendance status" },
+        "notes": { "type": "string", "description": "Notes" }
+      }
+    },
+    "LeaveRequest": {
+      "collection": "leave_requests",
+      "fields": {
+        "id": { "type": "string", "description": "Request ID" },
+        "employeeId": { "type": "string", "description": "Employee ID" },
+        "employeeName": { "type": "string", "description": "Employee name" },
+        "type": { "type": "string", "description": "Leave or permit type" },
+        "startDate": { "type": "string", "description": "Start date" },
+        "endDate": { "type": "string", "description": "End date" },
+        "reason": { "type": "string", "description": "Reason" },
+        "status": { "type": "string", "description": "Approval status" }
+      }
+    },
+    "OfficeConfig": {
+      "collection": "office_config",
+      "fields": {
+        "name": { "type": "string", "description": "Office name" },
+        "latitude": { "type": "number", "description": "Latitude" },
+        "longitude": { "type": "number", "description": "Longitude" },
+        "radius": { "type": "number", "description": "Allowed radius in meters" }
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { 
   Building2, 
   MapPin, 
@@ -28,6 +28,13 @@ export default function OfficeSettingsModal({
   const [formData, setFormData] = useState<OfficeConfig>(config);
   const [isDetectingCurrentLocation, setIsDetectingCurrentLocation] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(config);
+      setSuccessMessage(null);
+    }
+  }, [isOpen, config]);
 
   if (!isOpen) return null;
 

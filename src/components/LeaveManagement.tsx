@@ -17,9 +17,13 @@ import {
   Sparkles,
   Info,
   Plane,
-  MapPin
+  MapPin,
+  Pencil,
+  Trash2,
+  ShieldCheck,
+  AlertTriangle
 } from 'lucide-react';
-import { LeaveRequest, LeaveType, Employee, OfficeConfig } from '../types';
+import { LeaveRequest, LeaveType, LeaveStatus, Employee, OfficeConfig } from '../types';
 import { getTodayDateString } from '../utils/geo';
 
 interface LeaveManagementProps {
@@ -29,6 +33,8 @@ interface LeaveManagementProps {
   officeConfig?: OfficeConfig;
   onSubmitRequest: (newReq: Omit<LeaveRequest, 'id' | 'appliedAt' | 'status'>) => void;
   onUpdateStatus: (requestId: string, newStatus: 'Disetujui' | 'Ditolak') => void;
+  onEditRequest?: (updatedReq: LeaveRequest) => void;
+  onDeleteRequest?: (requestId: string) => void;
   initialOpenModal?: boolean;
   initialLeaveType?: LeaveType;
   onClearInitialModal?: () => void;
@@ -77,6 +83,8 @@ export default function LeaveManagement({
   officeConfig,
   onSubmitRequest,
   onUpdateStatus,
+  onEditRequest,
+  onDeleteRequest,
   initialOpenModal,
   initialLeaveType,
   onClearInitialModal,
@@ -183,6 +191,95 @@ export default function LeaveManagement({
 
   const totalDays = calculateDays(startDate, endDate);
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
+  const isSuperAdmin = currentEmployee.systemRole === 'superadmin' || currentEmployee.role.toLowerCase().includes('super');
+
+  // Super Admin: Edit and Delete state
+  const [editingRequest, setEditingRequest] = useState<LeaveRequest | null>(null);
+  const [requestToDelete, setRequestToDelete] = useState<LeaveRequest | null>(null);
+
+  // Edit form states
+  const [editEmpId, setEditEmpId] = useState<string>('');
+  const [editType, setEditType] = useState<LeaveType>('Cuti Tahunan');
+  const [editStartDate, setEditStartDate] = useState<string>('');
+  const [editEndDate, setEditEndDate] = useState<string>('');
+  const [editEstimatedArrivalTime, setEditEstimatedArrivalTime] = useState<string>('09:15');
+  const [editLateMinutes, setEditLateMinutes] = useState<number>(30);
+  const [editEstimatedDepartureTime, setEditEstimatedDepartureTime] = useState<string>('16:30');
+  const [editEarlyDepartureMinutes, setEditEarlyDepartureMinutes] = useState<number>(60);
+  const [editReason, setEditReason] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<LeaveStatus>('Menunggu');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editApprovedBy, setEditApprovedBy] = useState<string>('');
+  const [editFormError, setEditFormError] = useState<string | null>(null);
+
+  const handleOpenEditModal = (req: LeaveRequest) => {
+    setEditingRequest(req);
+    setEditEmpId(req.employeeId);
+    setEditType(req.type);
+    setEditStartDate(req.startDate);
+    setEditEndDate(req.endDate);
+    setEditEstimatedArrivalTime(req.estimatedArrivalTime || '09:15');
+    setEditLateMinutes(req.lateMinutes || 30);
+    setEditEstimatedDepartureTime(req.estimatedDepartureTime || '16:30');
+    setEditEarlyDepartureMinutes(req.earlyDepartureMinutes || 60);
+    setEditReason(req.reason);
+    setEditStatus(req.status);
+    setEditNotes(req.notes || '');
+    setEditApprovedBy(req.approvedBy || '');
+    setEditFormError(null);
+  };
+
+  const handleSaveEdit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingRequest || !onEditRequest) return;
+    setEditFormError(null);
+
+    if (!editReason.trim()) {
+      setEditFormError('Mohon isi alasan / keterangan pengajuan.');
+      return;
+    }
+
+    const selectedTarget = employees.find((e) => e.id === editEmpId) || {
+      id: editingRequest.employeeId,
+      name: editingRequest.employeeName,
+      nik: editingRequest.employeeNik,
+      department: editingRequest.department,
+    };
+
+    const calculatedDays = calculateDays(editStartDate, editEndDate);
+
+    const updatedReq: LeaveRequest = {
+      ...editingRequest,
+      employeeId: selectedTarget.id,
+      employeeName: selectedTarget.name,
+      employeeNik: selectedTarget.nik,
+      department: selectedTarget.department,
+      type: editType,
+      startDate: editStartDate,
+      endDate: editEndDate,
+      totalDays: calculatedDays,
+      reason: editReason.trim(),
+      status: editStatus,
+      notes: editNotes.trim() || undefined,
+      approvedBy:
+        editStatus !== 'Menunggu'
+          ? editApprovedBy.trim() || `${currentEmployee.name} (Super Admin)`
+          : undefined,
+      estimatedArrivalTime: editType === 'Izin Datang Terlambat' ? editEstimatedArrivalTime : undefined,
+      lateMinutes: editType === 'Izin Datang Terlambat' ? editLateMinutes : undefined,
+      estimatedDepartureTime: editType === 'Izin Pulang Awal' ? editEstimatedDepartureTime : undefined,
+      earlyDepartureMinutes: editType === 'Izin Pulang Awal' ? editEarlyDepartureMinutes : undefined,
+    };
+
+    onEditRequest(updatedReq);
+    setEditingRequest(null);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!requestToDelete || !onDeleteRequest) return;
+    onDeleteRequest(requestToDelete.id);
+    setRequestToDelete(null);
+  };
 
   // Monthly stats for Izin Datang Terlambat for selected target employee
   const employeeMonthlyLateRequests = useMemo(() => {
@@ -254,9 +351,12 @@ export default function LeaveManagement({
     setEstimatedDepartureTime(subtractMinutesFromTime(workEndTime, validMins));
   };
 
-  // Filtered requests list
+  const activeEmpIdSet = useMemo(() => new Set(employees.map(e => e.id)), [employees]);
+
+  // Filtered requests list (only active employees)
   const filteredRequests = useMemo(() => {
     return requests.filter((req) => {
+      if (!activeEmpIdSet.has(req.employeeId)) return false;
       if (filterTab === 'cuti_sakit') {
         return req.type !== 'Izin Datang Terlambat' && req.type !== 'Izin Pulang Awal';
       }
@@ -271,19 +371,19 @@ export default function LeaveManagement({
       }
       return true;
     });
-  }, [requests, filterTab]);
+  }, [requests, filterTab, activeEmpIdSet]);
 
   const totalLateRequestsAll = useMemo(() => {
-    return requests.filter((r) => r.type === 'Izin Datang Terlambat').length;
-  }, [requests]);
+    return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat').length;
+  }, [requests, activeEmpIdSet]);
 
   const totalEarlyRequestsAll = useMemo(() => {
-    return requests.filter((r) => r.type === 'Izin Pulang Awal').length;
-  }, [requests]);
+    return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Pulang Awal').length;
+  }, [requests, activeEmpIdSet]);
 
   const totalPendingRequests = useMemo(() => {
-    return requests.filter((r) => r.status === 'Menunggu').length;
-  }, [requests]);
+    return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.status === 'Menunggu').length;
+  }, [requests, activeEmpIdSet]);
 
   // Form submit handler
   const handleSubmit = (e: FormEvent) => {
@@ -850,9 +950,18 @@ export default function LeaveManagement({
             </button>
           </div>
 
-          <span className="text-[11px] text-slate-400">
-            {isAdminOrSuper ? 'Mode Otoritas Admin: Dapat menyetujui / menolak' : 'Menampilkan pengajuan tim kantor'}
-          </span>
+          <div className="flex items-center gap-2">
+            {isSuperAdmin ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                <span>Otoritas Super Admin: Akses Edit & Hapus Aktif</span>
+              </span>
+            ) : isAdminOrSuper ? (
+              <span className="text-[11px] text-slate-500 font-medium">Mode Otoritas Admin: Dapat menyetujui / menolak</span>
+            ) : (
+              <span className="text-[11px] text-slate-400">Menampilkan pengajuan tim kantor</span>
+            )}
+          </div>
         </div>
 
         {/* Requests Table */}
@@ -866,7 +975,9 @@ export default function LeaveManagement({
                 <th className="px-4 py-3">Durasi / Waktu</th>
                 <th className="px-4 py-3">Alasan / Keterangan</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Aksi Review HRD</th>
+                <th className="px-4 py-3 text-right">
+                  {isSuperAdmin ? 'Aksi (Review / Edit / Hapus)' : 'Aksi Review HRD'}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -982,11 +1093,11 @@ export default function LeaveManagement({
                         </span>
                       </td>
 
-                      {/* Action buttons for HR approval simulation */}
+                      {/* Action buttons for HR approval simulation and Super Admin controls */}
                       <td className="px-4 py-3 whitespace-nowrap text-right">
-                        {isPending ? (
-                          isAdminOrSuper ? (
-                            <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          {isPending && isAdminOrSuper && (
+                            <>
                               <button
                                 type="button"
                                 onClick={() => onUpdateStatus(req.id, 'Disetujui')}
@@ -1003,20 +1114,48 @@ export default function LeaveManagement({
                               >
                                 <X className="w-3 h-3" /> Tolak
                               </button>
+                            </>
+                          )}
+
+                          {!isPending && !isSuperAdmin && (
+                            <div className="text-[11px] text-slate-400 italic">
+                              <span>Selesai diproses</span>
+                              {req.approvedBy && (
+                                <span className="block text-[10px] text-slate-500 font-normal">Oleh: {req.approvedBy}</span>
+                              )}
                             </div>
-                          ) : (
+                          )}
+
+                          {isPending && !isAdminOrSuper && (
                             <span className="text-[11px] text-amber-600 font-medium italic">
                               Menunggu Review Admin
                             </span>
-                          )
-                        ) : (
-                          <div className="text-[11px] text-slate-400 italic">
-                            <span>Selesai diproses</span>
-                            {req.approvedBy && (
-                              <span className="block text-[10px] text-slate-500 font-normal">Oleh: {req.approvedBy}</span>
-                            )}
-                          </div>
-                        )}
+                          )}
+
+                          {/* Super Admin Exclusive: Edit and Delete buttons */}
+                          {isSuperAdmin && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(req)}
+                                className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Edit data pengajuan (Super Admin)"
+                              >
+                                <Pencil className="w-3 h-3 text-blue-600" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRequestToDelete(req)}
+                                className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Hapus data pengajuan (Super Admin)"
+                              >
+                                <Trash2 className="w-3 h-3 text-rose-600" />
+                                <span>Hapus</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                     </tr>
@@ -1539,6 +1678,426 @@ export default function LeaveManagement({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDIT PENGAJUAN (SUPER ADMIN EXCLUSIVE) */}
+      {editingRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 border border-amber-300 flex items-center justify-center">
+                  <Pencil className="w-4 h-4 text-amber-700" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-bold text-slate-900">Edit Data Pengajuan Izin / Cuti</h4>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-800 font-bold border border-amber-300 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-amber-600" /> Super Admin
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">ID Pengajuan: {editingRequest.id}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRequest(null)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-5 space-y-4 overflow-y-auto grow">
+              {editFormError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{editFormError}</span>
+                </div>
+              )}
+
+              {/* Karyawan Pemohon */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Karyawan Pemohon <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={editEmpId}
+                  onChange={(e) => {
+                    const newEmpId = e.target.value;
+                    setEditEmpId(newEmpId);
+                    const emp = employees.find((x) => x.id === newEmpId);
+                    if (emp) {
+                      const start = emp.shift?.startTime || officeConfig?.workStartTime || '08:30';
+                      const end = emp.shift?.endTime || officeConfig?.workEndTime || '17:30';
+                      if (editType === 'Izin Datang Terlambat') {
+                        setEditEstimatedArrivalTime(addMinutesToTime(start, editLateMinutes));
+                      } else if (editType === 'Izin Pulang Awal') {
+                        setEditEstimatedDepartureTime(subtractMinutesFromTime(end, editEarlyDepartureMinutes));
+                      }
+                    }
+                  }}
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name} ({emp.nik}) - {emp.department} [Sisa Cuti: {emp.remainingLeaveQuota}h]
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Jenis Pengajuan & Status Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Jenis Pengajuan <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={editType}
+                    onChange={(e) => {
+                      const newType = e.target.value as LeaveType;
+                      setEditType(newType);
+                      const emp = employees.find((x) => x.id === editEmpId) || currentEmployee;
+                      const start = emp.shift?.startTime || officeConfig?.workStartTime || '08:30';
+                      const end = emp.shift?.endTime || officeConfig?.workEndTime || '17:30';
+                      if (newType === 'Izin Datang Terlambat') {
+                        setEditLateMinutes(30);
+                        setEditEstimatedArrivalTime(addMinutesToTime(start, 30));
+                      } else if (newType === 'Izin Pulang Awal') {
+                        setEditEarlyDepartureMinutes(60);
+                        setEditEstimatedDepartureTime(subtractMinutesFromTime(end, 60));
+                      }
+                    }}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Izin Datang Terlambat">⏰ Izin Datang Terlambat</option>
+                    <option value="Izin Pulang Awal">🏃 Izin Pulang Lebih Awal</option>
+                    <option value="Izin Dinas Luar">✈️ Izin Dinas Luar</option>
+                    <option value="Cuti Tahunan">🏖️ Cuti Tahunan</option>
+                    <option value="Sakit">🏥 Sakit</option>
+                    <option value="Izin Pribadi">📋 Izin Pribadi</option>
+                    <option value="Cuti Melahirkan">👶 Cuti Melahirkan</option>
+                    <option value="Keperluan Mendesak">⚡ Keperluan Mendesak</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Status Pengajuan <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as LeaveStatus)}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Menunggu">⏳ Menunggu Persetujuan</option>
+                    <option value="Disetujui">✅ Disetujui (Disahkan)</option>
+                    <option value="Ditolak">❌ Ditolak</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Specific input for Izin Datang Terlambat */}
+              {editType === 'Izin Datang Terlambat' && (
+                <div className="p-3.5 bg-amber-50/70 rounded-xl border border-amber-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <ClockAlert className="w-3.5 h-3.5 text-amber-600" />
+                      Rincian Jam Keterlambatan
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                      Shift Masuk: {employees.find((e) => e.id === editEmpId)?.shift?.startTime || officeConfig?.workStartTime || '08:30'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Estimasi Tiba di Kantor
+                      </label>
+                      <input
+                        type="time"
+                        value={editEstimatedArrivalTime}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditEstimatedArrivalTime(val);
+                          const emp = employees.find((x) => x.id === editEmpId) || currentEmployee;
+                          const start = emp.shift?.startTime || officeConfig?.workStartTime || '08:30';
+                          const diff = getTimeDifferenceMinutes(start, val);
+                          setEditLateMinutes(diff > 0 ? diff : 15);
+                        }}
+                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-amber-900"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Durasi Terlambat (Menit)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="480"
+                        value={editLateMinutes}
+                        onChange={(e) => {
+                          const mins = Math.max(1, parseInt(e.target.value) || 1);
+                          setEditLateMinutes(mins);
+                          const emp = employees.find((x) => x.id === editEmpId) || currentEmployee;
+                          const start = emp.shift?.startTime || officeConfig?.workStartTime || '08:30';
+                          setEditEstimatedArrivalTime(addMinutesToTime(start, mins));
+                        }}
+                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-amber-900"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Specific input for Izin Pulang Awal */}
+              {editType === 'Izin Pulang Awal' && (
+                <div className="p-3.5 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                      <LogOut className="w-3.5 h-3.5 text-indigo-600" />
+                      Rincian Jam Pulang Lebih Awal
+                    </span>
+                    <span className="text-[10px] font-mono text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded">
+                      Shift Pulang: {employees.find((e) => e.id === editEmpId)?.shift?.endTime || officeConfig?.workEndTime || '17:30'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Estimasi Jam Pulang
+                      </label>
+                      <input
+                        type="time"
+                        value={editEstimatedDepartureTime}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditEstimatedDepartureTime(val);
+                          const emp = employees.find((x) => x.id === editEmpId) || currentEmployee;
+                          const end = emp.shift?.endTime || officeConfig?.workEndTime || '17:30';
+                          const diff = getTimeDifferenceMinutes(val, end);
+                          setEditEarlyDepartureMinutes(diff > 0 ? diff : 30);
+                        }}
+                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-indigo-900"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Pulang Lebih Awal (Menit)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="480"
+                        value={editEarlyDepartureMinutes}
+                        onChange={(e) => {
+                          const mins = Math.max(1, parseInt(e.target.value) || 1);
+                          setEditEarlyDepartureMinutes(mins);
+                          const emp = employees.find((x) => x.id === editEmpId) || currentEmployee;
+                          const end = emp.shift?.endTime || officeConfig?.workEndTime || '17:30';
+                          setEditEstimatedDepartureTime(subtractMinutesFromTime(end, mins));
+                        }}
+                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono font-bold text-indigo-900"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tanggal Mulai dan Selesai */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tanggal Mulai <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={editStartDate}
+                    onChange={(e) => {
+                      setEditStartDate(e.target.value);
+                      if (editType === 'Izin Datang Terlambat' || editType === 'Izin Pulang Awal') {
+                        setEditEndDate(e.target.value);
+                      }
+                    }}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tanggal Selesai <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    min={editStartDate}
+                    value={editEndDate}
+                    onChange={(e) => setEditEndDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Alasan / Keterangan */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Alasan / Keterangan Pengajuan <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              {/* Catatan Verifikator HR & Diverifikasi Oleh */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Catatan HR / Verifikator
+                  </label>
+                  <input
+                    type="text"
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Contoh: Disetujui Super Admin"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Diverifikasi / Disetujui Oleh
+                  </label>
+                  <input
+                    type="text"
+                    value={editApprovedBy}
+                    onChange={(e) => setEditApprovedBy(e.target.value)}
+                    placeholder="Contoh: Dimas Prasetyo (Super Admin)"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingRequest(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Perubahan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI HAPUS (SUPER ADMIN EXCLUSIVE) */}
+      {requestToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">
+                  Hapus Data Pengajuan Izin?
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold border border-rose-200">
+                  Super Admin
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Apakah Anda yakin ingin menghapus data pengajuan berikut secara permanen?
+              </p>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Karyawan:</span>
+                  <span className="font-bold text-slate-800">{requestToDelete.employeeName} ({requestToDelete.employeeNik})</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Jenis:</span>
+                  <span className="font-semibold text-slate-900">{requestToDelete.type}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Tanggal:</span>
+                  <span className="font-mono text-slate-700">
+                    {requestToDelete.startDate === requestToDelete.endDate 
+                      ? requestToDelete.startDate 
+                      : `${requestToDelete.startDate} s/d ${requestToDelete.endDate}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Status:</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    requestToDelete.status === 'Disetujui' ? 'bg-emerald-100 text-emerald-800' :
+                    requestToDelete.status === 'Ditolak' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {requestToDelete.status}
+                  </span>
+                </div>
+              </div>
+
+              {requestToDelete.status === 'Disetujui' && requestToDelete.type === 'Cuti Tahunan' && (
+                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-[11px] flex items-start gap-2">
+                  <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <span>
+                    Kuota cuti tahunan karyawan sebanyak <strong>{requestToDelete.totalDays} hari</strong> akan otomatis dikembalikan ke saldo kuota.
+                  </span>
+                </div>
+              )}
+
+              {requestToDelete.status === 'Disetujui' && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    Catatan izin yang tersinkronisasi pada riwayat presensi karyawan akan disesuaikan secara otomatis.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRequestToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Pengajuan</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

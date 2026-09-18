@@ -153,8 +153,8 @@ export default function AutoAttendanceModal({
           return;
         }
 
-        const shiftStart = emp.shift?.startTime || '08:30';
-        const shiftEnd = emp.shift?.endTime || '17:30';
+        const shiftStart = emp.shift?.startTime || officeConfig?.workStartTime || '08:30';
+        const shiftEnd = emp.shift?.endTime || officeConfig?.workEndTime || '17:30';
 
         let checkInTime: string | null = null;
         let checkOutTime: string | null = null;

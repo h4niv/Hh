@@ -27,7 +27,8 @@ import {
   ShieldAlert,
   CheckSquare,
   AlertTriangle,
-  Fingerprint
+  Fingerprint,
+  Plane
 } from 'lucide-react';
 import { AttendanceRecord, Employee } from '../types';
 import { exportAttendanceToCSV } from '../utils/exportCsv';
@@ -117,9 +118,13 @@ export default function HistoryTable({
     setEndDate('');
   };
 
-  // Filtered records based on period, search, dept, status, employee
+  // Filtered records based on period, search, dept, status, employee (only active employees)
   const filteredRecords = useMemo(() => {
+    const activeEmpIdSet = new Set(employees.map((e) => e.id));
     return records.filter((r) => {
+      // Abaikan data karyawan yang sudah dihapus dari daftar karyawan
+      if (!activeEmpIdSet.has(r.employeeId)) return false;
+
       const matchPeriod = isDateInPeriod(r.date, startDate, endDate);
       const matchSearch =
         r.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -132,7 +137,7 @@ export default function HistoryTable({
 
       return matchPeriod && matchSearch && matchDept && matchStatus && matchEmp;
     });
-  }, [records, startDate, endDate, searchQuery, selectedDept, selectedStatus, selectedEmployeeId]);
+  }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedStatus, selectedEmployeeId]);
 
   // Period Summary Statistics
   const periodStats = useMemo(() => {
@@ -140,6 +145,7 @@ export default function HistoryTable({
     const onTime = filteredRecords.filter((r) => r.status === 'Hadir Tepat Waktu').length;
     const late = filteredRecords.filter((r) => r.status === 'Terlambat').length;
     const izin = filteredRecords.filter((r) => r.status === 'Izin').length;
+    const cuti = filteredRecords.filter((r) => r.status === 'Cuti').length;
     const sakit = filteredRecords.filter((r) => r.status === 'Sakit').length;
     const alpha = filteredRecords.filter((r) => r.status === 'Alpha').length;
     const manualCount = filteredRecords.filter((r) => r.isManualEntry).length;
@@ -147,6 +153,7 @@ export default function HistoryTable({
     const onTimePct = total > 0 ? Math.round((onTime / total) * 100) : 0;
     const latePct = total > 0 ? Math.round((late / total) * 100) : 0;
     const izinPct = total > 0 ? Math.round((izin / total) * 100) : 0;
+    const cutiPct = total > 0 ? Math.round((cuti / total) * 100) : 0;
     const sakitPct = total > 0 ? Math.round((sakit / total) * 100) : 0;
     const alphaPct = total > 0 ? Math.round((alpha / total) * 100) : 0;
 
@@ -155,12 +162,14 @@ export default function HistoryTable({
       onTime,
       late,
       izin,
+      cuti,
       sakit,
       alpha,
       manualCount,
       onTimePct,
       latePct,
       izinPct,
+      cutiPct,
       sakitPct,
       alphaPct,
     };
@@ -477,8 +486,8 @@ export default function HistoryTable({
             </div>
           )}
 
-          {/* Period Summary KPI Cards - Separated Tepat Waktu, Terlambat, Izin, Sakit, Alpha */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mt-3.5" id="period-summary-kpis">
+          {/* Period Summary KPI Cards - Separated Tepat Waktu, Terlambat, Izin, Cuti, Sakit, Alpha */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 mt-3.5" id="period-summary-kpis">
             {/* Total Presensi */}
             <button
               type="button"
@@ -564,6 +573,28 @@ export default function HistoryTable({
               <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-lg font-bold text-blue-700">{periodStats.izin}</span>
                 <span className="text-[11px] font-semibold text-blue-800">({periodStats.izinPct}%)</span>
+              </div>
+            </button>
+
+            {/* Total Cuti */}
+            <button
+              type="button"
+              id="kpi-filter-cuti"
+              onClick={() => setSelectedStatus(selectedStatus === 'Cuti' ? 'Semua' : 'Cuti')}
+              className={`text-left bg-white rounded-xl p-2.5 border transition-all cursor-pointer shadow-2xs hover:shadow-xs ${
+                selectedStatus === 'Cuti'
+                  ? 'border-teal-600 bg-teal-50/40 ring-2 ring-teal-500/20'
+                  : 'border-teal-200/80 hover:border-teal-300'
+              }`}
+              title="Klik untuk filter: Cuti"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-teal-800 uppercase tracking-wider block">Total Cuti</span>
+                <Plane className="w-3.5 h-3.5 text-teal-600" />
+              </div>
+              <div className="mt-1 flex items-baseline gap-1.5">
+                <span className="text-lg font-bold text-teal-700">{periodStats.cuti}</span>
+                <span className="text-[11px] font-semibold text-teal-800">({periodStats.cutiPct}%)</span>
               </div>
             </button>
 
@@ -655,6 +686,7 @@ export default function HistoryTable({
               <option value="Hadir Tepat Waktu">Hadir Tepat Waktu</option>
               <option value="Terlambat">Terlambat</option>
               <option value="Izin">Izin</option>
+              <option value="Cuti">Cuti</option>
               <option value="Sakit">Sakit</option>
               <option value="Alpha">Alpha</option>
             </select>
@@ -919,12 +951,22 @@ export default function HistoryTable({
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : isLate
                             ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : record.status === 'Cuti'
+                            ? 'bg-teal-50 text-teal-700 border border-teal-200'
                             : isLeave
                             ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : record.status === 'Sakit'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : record.status === 'Alpha'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
                             : 'bg-slate-100 text-slate-600'
                         }`}>
                           {isOnTime && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
                           {isLate && <ClockAlert className="w-3 h-3 text-amber-600" />}
+                          {record.status === 'Cuti' && <Plane className="w-3 h-3 text-teal-600" />}
+                          {isLeave && <CalendarCheck className="w-3 h-3 text-blue-600" />}
+                          {record.status === 'Sakit' && <HeartPulse className="w-3 h-3 text-purple-600" />}
+                          {record.status === 'Alpha' && <UserX className="w-3 h-3 text-rose-600" />}
                           {record.status}
                           {isLate && record.lateMinutes ? ` (${record.lateMinutes}m)` : ''}
                         </span>
