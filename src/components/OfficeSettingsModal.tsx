@@ -7,7 +7,8 @@ import {
   X, 
   Check, 
   Navigation,
-  RotateCcw
+  RotateCcw,
+  Users
 } from 'lucide-react';
 import { OfficeConfig } from '../types';
 import { DEFAULT_OFFICE_CONFIG } from '../data/mockData';
@@ -201,10 +202,22 @@ export default function OfficeSettingsModal({
 
           {/* Work Hours & Late Tolerance */}
           <div className="space-y-3">
-            <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-blue-600" />
-              Aturan Jam Kerja Kantor
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                Aturan Jam Kerja Kantor (Berlaku untuk Semua Karyawan)
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                <Users className="w-3 h-3" /> Auto-sync All Users
+              </span>
+            </div>
+
+            <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-100 text-[11px] text-blue-800 flex items-start gap-2">
+              <Clock className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <span>
+                Setiap perubahan jam kerja di bawah ini <strong>otomatis disinkronkan ke jam kerja seluruh karyawan</strong> di sistem dan Cloud Firestore.
+              </span>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>

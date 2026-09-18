@@ -25,7 +25,8 @@ import {
   ShieldAlert,
   User,
   Shield,
-  Crown
+  Crown,
+  RotateCcw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Employee, ShiftInfo, SystemRole, OfficeConfig } from '../types';
@@ -1016,9 +1017,25 @@ export default function EmployeeManagement({
 
               {/* Shift & Working Hours Section */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  <Clock className="w-3.5 h-3.5 text-blue-600" />
-                  Pengaturan Shift & Jam Kerja
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    <Clock className="w-3.5 h-3.5 text-blue-600" />
+                    Pengaturan Shift & Jam Kerja
+                  </div>
+                  {officeConfig && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWorkStartTime(officeConfig.workStartTime);
+                        setWorkEndTime(officeConfig.workEndTime);
+                        setLateTolerance(officeConfig.lateToleranceMinutes);
+                        setShiftName('Reguler');
+                      }}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Samakan Jam Sistem ({officeConfig.workStartTime} - {officeConfig.workEndTime})
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -68,19 +68,16 @@ export default function App() {
     const cfg: OfficeConfig = savedOffice ? JSON.parse(savedOffice) : DEFAULT_OFFICE_CONFIG;
     const emps: Employee[] = saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
     return emps.map(emp => {
-      if (emp.shift.id === 'shift-1' || emp.shift.name.toLowerCase().includes('reguler')) {
-        return {
-          ...emp,
-          shift: {
-            ...emp.shift,
-            startTime: cfg.workStartTime || '08:30',
-            endTime: cfg.workEndTime || '17:30',
-            lateToleranceMinutes: cfg.lateToleranceMinutes ?? 15,
-            name: `Reguler (${cfg.workStartTime || '08:30'} - ${cfg.workEndTime || '17:30'})`,
-          }
-        };
-      }
-      return emp;
+      return {
+        ...emp,
+        shift: {
+          ...emp.shift,
+          startTime: cfg.workStartTime || '08:30',
+          endTime: cfg.workEndTime || '17:30',
+          lateToleranceMinutes: cfg.lateToleranceMinutes ?? 15,
+          name: `${emp.shift.name.split(' (')[0] || 'Reguler'} (${cfg.workStartTime || '08:30'} - ${cfg.workEndTime || '17:30'})`,
+        }
+      };
     });
   });
 
@@ -192,6 +189,23 @@ export default function App() {
     const unsubConfig = subscribeToOfficeConfig((remoteConfig) => {
       if (remoteConfig) {
         setOfficeConfig(remoteConfig);
+        // Automatically sync all employees work hours to match the updated system office schedule
+        setEmployees(prev => {
+          const updated = prev.map(emp => {
+            const updatedEmp = {
+              ...emp,
+              shift: {
+                ...emp.shift,
+                startTime: remoteConfig.workStartTime,
+                endTime: remoteConfig.workEndTime,
+                lateToleranceMinutes: remoteConfig.lateToleranceMinutes,
+                name: `${emp.shift.name.split(' (')[0] || 'Reguler'} (${remoteConfig.workStartTime} - ${remoteConfig.workEndTime})`,
+              }
+            };
+            return updatedEmp;
+          });
+          return updated;
+        });
       }
     });
 
@@ -1262,26 +1276,23 @@ export default function App() {
           syncOfficeConfigToFirestore(newCfg);
           setEmployees(prev => {
             const updated = prev.map(emp => {
-              if (emp.shift.id === 'shift-1' || emp.shift.name.toLowerCase().includes('reguler')) {
-                const updatedEmp = {
-                  ...emp,
-                  shift: {
-                    ...emp.shift,
-                    startTime: newCfg.workStartTime,
-                    endTime: newCfg.workEndTime,
-                    lateToleranceMinutes: newCfg.lateToleranceMinutes,
-                    name: `Reguler (${newCfg.workStartTime} - ${newCfg.workEndTime})`,
-                  }
-                };
-                syncEmployeeToFirestore(updatedEmp);
-                return updatedEmp;
-              }
-              return emp;
+              const updatedEmp = {
+                ...emp,
+                shift: {
+                  ...emp.shift,
+                  startTime: newCfg.workStartTime,
+                  endTime: newCfg.workEndTime,
+                  lateToleranceMinutes: newCfg.lateToleranceMinutes,
+                  name: `${emp.shift.name.split(' (')[0] || 'Reguler'} (${newCfg.workStartTime} - ${newCfg.workEndTime})`,
+                }
+              };
+              syncEmployeeToFirestore(updatedEmp);
+              return updatedEmp;
             });
             localStorage.setItem('absensi_employees', JSON.stringify(updated));
             return updated;
           });
-          showToast('Pengaturan kantor dan aturan jam absensi berhasil diperbarui & disinkronkan ke Firebase!');
+          showToast(`Jam kerja seluruh karyawan berhasil disesuaikan menjadi ${newCfg.workStartTime} - ${newCfg.workEndTime} WIB dan disinkronkan ke Firebase!`);
         }}
       />
 
