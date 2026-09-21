@@ -169,7 +169,7 @@ export default function Header({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-slate-900 tracking-tight">AbsensiPro</span>
+                <span className="text-lg font-bold text-slate-900 tracking-tight">SIAP-TEX</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium border border-blue-200">
                   Enterprise HR
                 </span>

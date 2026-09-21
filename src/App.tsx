@@ -1465,8 +1465,8 @@ export default function App() {
       <footer className="bg-white border-t border-slate-200 py-4 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-700">AbsensiPro</span>
-            <span>• Sistem Presensi Karyawan Terintegrasi</span>
+            <span className="font-semibold text-slate-700">SIAP-TEX</span>
+            <span>• Sistem Presensi Guru & Karyawan Terintegrasi</span>
           </div>
           <div className="flex items-center gap-3">
             <button
