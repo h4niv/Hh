@@ -127,6 +127,11 @@ export default function HistoryTable({
       // Abaikan data karyawan yang sudah dihapus dari daftar karyawan
       if (!activeEmpIdSet.has(r.employeeId)) return false;
 
+      // Pembatasan Akses: Karyawan biasa hanya dapat melihat riwayat presensinya sendiri
+      if (!isAdminOrSuper && r.employeeId !== currentEmployee.id) {
+        return false;
+      }
+
       const matchPeriod = isDateInPeriod(r.date, startDate, endDate);
       const matchSearch =
         r.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -138,7 +143,7 @@ export default function HistoryTable({
 
       return matchPeriod && matchSearch && matchDept && matchEmp;
     });
-  }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedEmployeeId]);
+  }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedEmployeeId, isAdminOrSuper, currentEmployee.id]);
 
   // Filtered records based on status
   const filteredRecords = useMemo(() => {
@@ -764,17 +769,24 @@ export default function HistoryTable({
 
           {/* Employee Filter */}
           <div>
-            <select
-              id="filter-employee-select"
-              value={selectedEmployeeId}
-              onChange={(e) => setSelectedEmployeeId(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
-            >
-              <option value="Semua">Semua Karyawan</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>{e.name} ({e.nik})</option>
-              ))}
-            </select>
+            {isAdminOrSuper ? (
+              <select
+                id="filter-employee-select"
+                value={selectedEmployeeId}
+                onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
+              >
+                <option value="Semua">Semua Karyawan ({employees.length})</option>
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name} ({e.nik})</option>
+                ))}
+              </select>
+            ) : (
+              <div className="w-full px-3 py-2 text-xs rounded-xl border border-blue-200 bg-blue-50/70 text-blue-900 font-semibold flex items-center justify-between">
+                <span className="truncate">👤 {currentEmployee.name} ({currentEmployee.nik})</span>
+                <span className="text-[10px] bg-blue-200 text-blue-800 px-1.5 py-0.2 rounded font-bold shrink-0 ml-1">Akun Anda</span>
+              </div>
+            )}
           </div>
         </div>
 

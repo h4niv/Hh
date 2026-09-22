@@ -45,6 +45,7 @@ import PermitRecapDashboard from './components/PermitRecapDashboard';
 import FingerprintModal from './components/FingerprintModal';
 import AndroidAppModal from './components/AndroidAppModal';
 import LiveFingerprintToast from './components/LiveFingerprintToast';
+import { LoginPage } from './components/LoginPage';
 import { useFingerprintLiveStream } from './hooks/useFingerprintLiveStream';
 import {
   syncAttendanceRecordToFirestore,
@@ -129,8 +130,16 @@ export default function App() {
     return saved ? JSON.parse(saved) : DEFAULT_OFFICE_CONFIG;
   });
 
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const savedAuth = localStorage.getItem('absensi_auth_logged_emp_id');
+    const savedEmp = localStorage.getItem('absensi_current_emp');
+    return Boolean(savedAuth || savedEmp);
+  });
+
   const [currentEmployeeId, setCurrentEmployeeId] = useState<string>(() => {
-    const saved = localStorage.getItem('absensi_current_emp');
+    const savedAuth = localStorage.getItem('absensi_auth_logged_emp_id');
+    const saved = savedAuth || localStorage.getItem('absensi_current_emp');
     const savedEmployees = localStorage.getItem('absensi_employees');
     const emps: Employee[] = savedEmployees ? JSON.parse(savedEmployees) : INITIAL_EMPLOYEES;
     if (saved && emps.some(e => e.id === saved)) {
@@ -1076,6 +1085,40 @@ export default function App() {
     });
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('absensi_auth_logged_emp_id');
+    setIsAuthenticated(false);
+    showToast('Anda telah berhasil keluar dari akun.', 'info');
+  };
+
+  const handleLogin = (loggedEmp: Employee) => {
+    setCurrentEmployeeId(loggedEmp.id);
+    setIsAuthenticated(true);
+    localStorage.setItem('absensi_auth_logged_emp_id', loggedEmp.id);
+    localStorage.setItem('absensi_current_emp', loggedEmp.id);
+    showToast(
+      `Selamat datang, ${loggedEmp.name}! Masuk sebagai ${
+        loggedEmp.systemRole === 'superadmin'
+          ? 'Superadmin'
+          : loggedEmp.systemRole === 'admin'
+          ? 'Administrator'
+          : 'Karyawan (User)'
+      }.`,
+      'success'
+    );
+  };
+
+  // If not authenticated, render Login Page
+  if (!isAuthenticated || !currentEmployee) {
+    return (
+      <LoginPage
+        employees={employees}
+        officeConfig={officeConfig}
+        onLogin={handleLogin}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 font-sans flex flex-col">
       
@@ -1103,17 +1146,38 @@ export default function App() {
           setCurrentEmployeeId(emp.id);
           showToast(`Beralih ke profil karyawan: ${emp.name}`, 'info');
         }}
+        onLogout={handleLogout}
         activeTab={activeTab}
         onTabChange={(tab) => {
           if (tab === 'pengaturan') {
+            if (currentEmployee.systemRole !== 'superadmin') {
+              showToast('Akses ditolak: Hanya Superadmin yang dapat mengatur parameter kantor.', 'error');
+              return;
+            }
             setIsOfficeModalOpen(true);
+          } else if (tab === 'karyawan') {
+            if (currentEmployee.systemRole === 'karyawan') {
+              showToast('Akses ditolak: Data master karyawan hanya untuk Admin & Superadmin.', 'error');
+              return;
+            }
+            setActiveTab(tab);
           } else {
             setActiveTab(tab);
           }
         }}
         officeConfig={officeConfig}
-        onOpenOfficeModal={() => setIsOfficeModalOpen(true)}
+        onOpenOfficeModal={() => {
+          if (currentEmployee.systemRole !== 'superadmin') {
+            showToast('Akses ditolak: Hanya Superadmin yang dapat mengatur parameter kantor.', 'error');
+            return;
+          }
+          setIsOfficeModalOpen(true);
+        }}
         onOpenAddEmployeeModal={() => {
+          if (currentEmployee.systemRole === 'karyawan') {
+            showToast('Akses ditolak: Hanya Admin & Superadmin yang dapat menambah karyawan.', 'error');
+            return;
+          }
           setActiveTab('karyawan');
           setIsAddEmployeeModalDirectOpen(true);
         }}

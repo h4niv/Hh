@@ -43,6 +43,8 @@ export interface Employee {
   shift: ShiftInfo;
   remainingLeaveQuota: number;
   fingerprintPin?: string; // No PIN/ID pendaftaran pada mesin sidik jari Solution
+  password?: string; // Password / PIN akun login (default: 123456 atau NIK)
+  loginPin?: string; // 4-6 digit quick PIN
 }
 
 export interface GeoLocationData {

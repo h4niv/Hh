@@ -20,7 +20,8 @@ import {
   Sparkles,
   Cloud,
   RefreshCw,
-  Smartphone
+  Smartphone,
+  LogOut
 } from 'lucide-react';
 import { Employee, OfficeConfig } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -37,6 +38,7 @@ interface HeaderProps {
   cloudSyncStatus?: 'connected' | 'syncing' | 'offline';
   onForceSync?: () => void;
   onOpenAndroidModal?: () => void;
+  onLogout?: () => void;
 }
 
 export default function Header({
@@ -51,6 +53,7 @@ export default function Header({
   cloudSyncStatus = 'connected',
   onForceSync,
   onOpenAndroidModal,
+  onLogout,
 }: HeaderProps) {
   const [time, setTime] = useState(new Date());
   const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
@@ -301,7 +304,7 @@ export default function Header({
               </button>
             </div>
 
-            {/* Dropdown Menu for Switch Employee & Role Filter */}
+            {/* Dropdown Menu for Switch Employee & Role Filter / Profile Card */}
             {isEmployeeDropdownOpen && (
               <>
                 <div
@@ -312,222 +315,292 @@ export default function Header({
                   id="employee-dropdown-list"
                   className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200/90 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col max-h-[520px]"
                 >
-                  <div className="px-3.5 py-2.5 border-b border-slate-100">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <UserCheck className="w-4 h-4 text-blue-600" />
-                        <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">Pilih Akun Karyawan</p>
+                  {/* For Regular Karyawan (User): Show Profile Details and Logout only */}
+                  {!isAdminOrSuper ? (
+                    <div className="p-4 space-y-3.5">
+                      <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                        <img
+                          src={currentEmployee.avatarUrl}
+                          alt={currentEmployee.name}
+                          className="w-12 h-12 rounded-xl object-cover border border-slate-200"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-bold text-slate-900 truncate">{currentEmployee.name}</h4>
+                          <p className="text-xs text-slate-500 font-mono">{currentEmployee.nik}</p>
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                            👤 Akun User (Karyawan)
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[11px] font-mono font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                        {filteredDropdownEmployees.length} dari {employees.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Ketik nama/NIK di bawah ini untuk mencari otomatis, atau filter berdasarkan peran:
-                    </p>
 
-                    {/* LIVE SEARCH INPUT */}
-                    <div className="relative mt-2.5">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        id="employee-search-input"
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value);
-                          setSelectedIndex(0);
-                        }}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Ketik nama, NIK, jabatan, atau divisi..."
-                        className="w-full pl-8.5 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 placeholder-slate-400 shadow-2xs font-medium transition-all"
-                        autoComplete="off"
-                      />
-                      {searchQuery && (
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1.5 text-xs">
+                        <div className="flex justify-between text-slate-600">
+                          <span>Departemen:</span>
+                          <span className="font-semibold text-slate-800">{currentEmployee.department}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Jabatan / Posisi:</span>
+                          <span className="font-semibold text-slate-800">{currentEmployee.role}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Shift Kerja:</span>
+                          <span className="font-semibold text-slate-800">{currentEmployee.shift.name} ({currentEmployee.shift.startTime} - {currentEmployee.shift.endTime})</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Sisa Kuota Cuti:</span>
+                          <span className="font-bold text-emerald-600">{currentEmployee.remainingLeaveQuota} Hari</span>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl text-[11px] text-blue-800 flex items-start gap-2">
+                        <ShieldAlert className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                        <span>Akses terbatas: Untuk mengelola data rekan kerja atau pengaturan kantor, masuk dengan akun Administrator.</span>
+                      </div>
+
+                      {onLogout && (
                         <button
                           type="button"
+                          id="btn-logout-user"
                           onClick={() => {
-                            setSearchQuery('');
-                            searchInputRef.current?.focus();
+                            setIsEmployeeDropdownOpen(false);
+                            onLogout();
                           }}
-                          className="absolute right-2.5 top-2 p-0.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 cursor-pointer"
-                          title="Hapus pencarian"
+                          className="w-full py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <LogOut className="w-4 h-4 text-rose-600" />
+                          <span>Keluar dari Akun (Logout)</span>
                         </button>
                       )}
                     </div>
-
-                    {/* Role Filter Tabs */}
-                    <div className="grid grid-cols-4 gap-1 mt-2.5 p-0.5 bg-slate-100 rounded-lg text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setDropdownRoleFilter('all')}
-                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer text-center ${
-                          dropdownRoleFilter === 'all'
-                            ? 'bg-white text-slate-900 shadow-2xs font-semibold'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Semua ({employees.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDropdownRoleFilter('superadmin')}
-                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
-                          dropdownRoleFilter === 'superadmin'
-                            ? 'bg-purple-600 text-white shadow-2xs font-semibold'
-                            : 'text-purple-700 hover:bg-purple-50'
-                        }`}
-                      >
-                        <Crown className="w-2.5 h-2.5" />
-                        Super ({employees.filter(e => e.systemRole === 'superadmin').length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDropdownRoleFilter('admin')}
-                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
-                          dropdownRoleFilter === 'admin'
-                            ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
-                            : 'text-indigo-700 hover:bg-indigo-50'
-                        }`}
-                      >
-                        <ShieldCheck className="w-2.5 h-2.5" />
-                        Admin ({employees.filter(e => e.systemRole === 'admin').length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDropdownRoleFilter('karyawan')}
-                        className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
-                          dropdownRoleFilter === 'karyawan'
-                            ? 'bg-slate-700 text-white shadow-2xs font-semibold'
-                            : 'text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        <User className="w-2.5 h-2.5" />
-                        Staf ({employees.filter(e => e.systemRole === 'karyawan').length})
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-64 min-h-[140px]">
-                    {filteredDropdownEmployees.length === 0 ? (
-                      <div className="p-6 text-center text-xs space-y-2">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-                          <Search className="w-4 h-4" />
+                  ) : (
+                    /* For Admin & Superadmin: Show Directory Switcher & Logout */
+                    <>
+                      <div className="px-3.5 py-2.5 border-b border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <UserCheck className="w-4 h-4 text-blue-600" />
+                            <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">Pilih Akun Karyawan</p>
+                          </div>
+                          <span className="text-[11px] font-mono font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                            {filteredDropdownEmployees.length} dari {employees.length}
+                          </span>
                         </div>
-                        <p className="text-slate-600 font-semibold">
-                          Tidak ditemukan karyawan dengan kata kunci: <span className="text-blue-600 italic">"{searchQuery}"</span>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Ketik nama/NIK di bawah ini untuk mencari otomatis, atau filter berdasarkan peran:
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => setSearchQuery('')}
-                          className="text-[11px] text-blue-600 hover:text-blue-700 font-medium underline cursor-pointer"
-                        >
-                          Reset Pencarian
-                        </button>
-                      </div>
-                    ) : (
-                      filteredDropdownEmployees.map((emp, index) => {
-                        const isSelected = emp.id === currentEmployee.id;
-                        const isKeyboardActive = index === selectedIndex && Boolean(searchQuery);
-                        const isEmpSuper = emp.systemRole === 'superadmin';
-                        const isEmpAdmin = emp.systemRole === 'admin';
 
-                        return (
-                          <button
-                            key={emp.id}
-                            id={`select-emp-${emp.id}`}
-                            type="button"
-                            onClick={() => {
-                              onSelectEmployee(emp);
-                              setIsEmployeeDropdownOpen(false);
+                        {/* LIVE SEARCH INPUT */}
+                        <div className="relative mt-2.5">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                          <input
+                            ref={searchInputRef}
+                            type="text"
+                            id="employee-search-input"
+                            value={searchQuery}
+                            onChange={(e) => {
+                              setSearchQuery(e.target.value);
+                              setSelectedIndex(0);
                             }}
-                            className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors cursor-pointer ${
-                              isSelected 
-                                ? 'bg-blue-50/80 border-l-3 border-blue-600' 
-                                : isKeyboardActive
-                                ? 'bg-slate-100'
-                                : 'hover:bg-slate-50'
+                            onKeyDown={handleKeyDown}
+                            placeholder="Ketik nama, NIK, jabatan, atau divisi..."
+                            className="w-full pl-8.5 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 placeholder-slate-400 shadow-2xs font-medium transition-all"
+                            autoComplete="off"
+                          />
+                          {searchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchQuery('');
+                                searchInputRef.current?.focus();
+                              }}
+                              className="absolute right-2.5 top-2 p-0.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+                              title="Hapus pencarian"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Role Filter Tabs */}
+                        <div className="grid grid-cols-4 gap-1 mt-2.5 p-0.5 bg-slate-100 rounded-lg text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setDropdownRoleFilter('all')}
+                            className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer text-center ${
+                              dropdownRoleFilter === 'all'
+                                ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+                                : 'text-slate-600 hover:text-slate-900'
                             }`}
                           >
-                            <div className="relative shrink-0">
-                              <img
-                                src={emp.avatarUrl}
-                                alt={emp.name}
-                                className="w-9 h-9 rounded-lg object-cover border border-slate-200"
-                              />
-                              {isEmpSuper && (
-                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-purple-600 rounded-full border border-white flex items-center justify-center" title="Superadministrator">
-                                  <Crown className="w-2.5 h-2.5 text-white" />
-                                </span>
-                              )}
-                              {isEmpAdmin && !isEmpSuper && (
-                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-600 rounded-full border border-white flex items-center justify-center" title="Administrator">
-                                  <ShieldCheck className="w-2.5 h-2.5 text-white" />
-                                </span>
-                              )}
+                            Semua ({employees.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDropdownRoleFilter('superadmin')}
+                            className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
+                              dropdownRoleFilter === 'superadmin'
+                                ? 'bg-purple-600 text-white shadow-2xs font-semibold'
+                                : 'text-purple-700 hover:bg-purple-50'
+                            }`}
+                          >
+                            <Crown className="w-2.5 h-2.5" />
+                            Super ({employees.filter(e => e.systemRole === 'superadmin').length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDropdownRoleFilter('admin')}
+                            className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
+                              dropdownRoleFilter === 'admin'
+                                ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                                : 'text-indigo-700 hover:bg-indigo-50'
+                            }`}
+                          >
+                            <ShieldCheck className="w-2.5 h-2.5" />
+                            Admin ({employees.filter(e => e.systemRole === 'admin').length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDropdownRoleFilter('karyawan')}
+                            className={`py-1 px-1 rounded-md font-medium text-[10px] transition-all cursor-pointer flex items-center justify-center gap-0.5 ${
+                              dropdownRoleFilter === 'karyawan'
+                                ? 'bg-slate-700 text-white shadow-2xs font-semibold'
+                                : 'text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            <User className="w-2.5 h-2.5" />
+                            Staf ({employees.filter(e => e.systemRole === 'karyawan').length})
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-64 min-h-[140px]">
+                        {filteredDropdownEmployees.length === 0 ? (
+                          <div className="p-6 text-center text-xs space-y-2">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                              <Search className="w-4 h-4" />
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-700 font-bold' : 'text-slate-800'}`}>
-                                  {highlightMatch(emp.name, searchQuery)}
-                                </span>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  {isEmpSuper ? (
-                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 font-bold border border-purple-200 flex items-center gap-0.5">
-                                      <Crown className="w-2.5 h-2.5" />
-                                      Superadmin
-                                    </span>
-                                  ) : isEmpAdmin ? (
-                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 flex items-center gap-0.5">
-                                      <ShieldCheck className="w-2.5 h-2.5" />
-                                      Admin
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
-                                      Karyawan
+                            <p className="text-slate-600 font-semibold">
+                              Tidak ditemukan karyawan dengan kata kunci: <span className="text-blue-600 italic">"{searchQuery}"</span>
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="text-[11px] text-blue-600 hover:text-blue-700 font-medium underline cursor-pointer"
+                            >
+                              Reset Pencarian
+                            </button>
+                          </div>
+                        ) : (
+                          filteredDropdownEmployees.map((emp, index) => {
+                            const isSelected = emp.id === currentEmployee.id;
+                            const isKeyboardActive = index === selectedIndex && Boolean(searchQuery);
+                            const isEmpSuper = emp.systemRole === 'superadmin';
+                            const isEmpAdmin = emp.systemRole === 'admin';
+
+                            return (
+                              <button
+                                key={emp.id}
+                                id={`select-emp-${emp.id}`}
+                                type="button"
+                                onClick={() => {
+                                  onSelectEmployee(emp);
+                                  setIsEmployeeDropdownOpen(false);
+                                }}
+                                className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors cursor-pointer ${
+                                  isSelected 
+                                    ? 'bg-blue-50/80 border-l-3 border-blue-600' 
+                                    : isKeyboardActive
+                                    ? 'bg-slate-100'
+                                    : 'hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="relative shrink-0">
+                                  <img
+                                    src={emp.avatarUrl}
+                                    alt={emp.name}
+                                    className="w-9 h-9 rounded-lg object-cover border border-slate-200"
+                                  />
+                                  {isEmpSuper && (
+                                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-purple-600 rounded-full border border-white flex items-center justify-center" title="Superadministrator">
+                                      <Crown className="w-2.5 h-2.5 text-white" />
                                     </span>
                                   )}
-                                  {isSelected && (
-                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 font-semibold">Aktif</span>
+                                  {isEmpAdmin && !isEmpSuper && (
+                                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-600 rounded-full border border-white flex items-center justify-center" title="Administrator">
+                                      <ShieldCheck className="w-2.5 h-2.5 text-white" />
+                                    </span>
                                   )}
                                 </div>
-                              </div>
-                              <p className="text-[11px] text-slate-500 truncate">
-                                {highlightMatch(emp.nik, searchQuery)} • {highlightMatch(emp.department, searchQuery)} ({emp.role})
-                              </p>
-                            </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-700 font-bold' : 'text-slate-800'}`}>
+                                      {highlightMatch(emp.name, searchQuery)}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {isEmpSuper ? (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 font-bold border border-purple-200 flex items-center gap-0.5">
+                                          <Crown className="w-2.5 h-2.5" />
+                                          Superadmin
+                                        </span>
+                                      ) : isEmpAdmin ? (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 flex items-center gap-0.5">
+                                          <ShieldCheck className="w-2.5 h-2.5" />
+                                          Admin
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
+                                          Karyawan
+                                        </span>
+                                      )}
+                                      {isSelected && (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 font-semibold">Aktif</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 truncate">
+                                    {highlightMatch(emp.nik, searchQuery)} • {highlightMatch(emp.department, searchQuery)} ({emp.role})
+                                  </p>
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      <div className="p-2 border-t border-slate-100 bg-slate-50/90 flex flex-col gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEmployeeDropdownOpen(false);
+                            if (onOpenAddEmployeeModal) {
+                              onOpenAddEmployeeModal();
+                            } else {
+                              onTabChange('karyawan');
+                            }
+                          }}
+                          className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 transition-colors cursor-pointer"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>+ Tambah Karyawan Baru</span>
+                        </button>
+
+                        {onLogout && (
+                          <button
+                            type="button"
+                            id="btn-logout-admin"
+                            onClick={() => {
+                              setIsEmployeeDropdownOpen(false);
+                              onLogout();
+                            }}
+                            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer border border-rose-200/80"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>Keluar dari Akun (Logout)</span>
                           </button>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  <div className="p-2 border-t border-slate-100 bg-slate-50/90 flex flex-col gap-1.5">
-                    <div className="px-2 py-1 text-[11px] text-slate-500 bg-amber-50/80 border border-amber-200/80 rounded-lg flex items-start gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Role Admin</strong> memiliki akses persetujuan cuti, kelola master karyawan, dan pengaturan kantor.
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEmployeeDropdownOpen(false);
-                        if (onOpenAddEmployeeModal) {
-                          onOpenAddEmployeeModal();
-                        } else {
-                          onTabChange('karyawan');
-                        }
-                      }}
-                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 transition-colors cursor-pointer"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>+ Tambah Karyawan Baru</span>
-                    </button>
-                  </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -548,7 +621,7 @@ export default function Header({
             }`}
           >
             <UserCheck className="w-4 h-4" />
-            <span>Presensi & Absen</span>
+            <span>{!isAdminOrSuper ? 'Presensi Saya' : 'Presensi & Absen'}</span>
           </button>
 
           <button
@@ -562,7 +635,7 @@ export default function Header({
             }`}
           >
             <CalendarDays className="w-4 h-4" />
-            <span>Rekapitulasi Kehadiran</span>
+            <span>{!isAdminOrSuper ? 'Riwayat & Rekap Saya' : 'Rekapitulasi Kehadiran'}</span>
           </button>
 
           <button
@@ -576,50 +649,56 @@ export default function Header({
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>Pengajuan Izin & Cuti</span>
+            <span>{!isAdminOrSuper ? 'Pengajuan Izin & Cuti' : 'Persetujuan Izin & Cuti'}</span>
           </button>
 
-          <button
-            type="button"
-            id="nav-tab-karyawan"
-            onClick={() => onTabChange('karyawan')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'karyawan'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Data Karyawan</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
-              activeTab === 'karyawan' 
-                ? 'bg-blue-700/60 text-blue-100' 
-                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-            }`}>
-              Admin
-            </span>
-          </button>
+          {/* Data Karyawan - Only for Admin & Superadmin */}
+          {isAdminOrSuper && (
+            <button
+              type="button"
+              id="nav-tab-karyawan"
+              onClick={() => onTabChange('karyawan')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'karyawan'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>Data Karyawan</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                activeTab === 'karyawan' 
+                  ? 'bg-blue-700/60 text-blue-100' 
+                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+              }`}>
+                Admin
+              </span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            id="nav-tab-pengaturan"
-            onClick={() => onTabChange('pengaturan')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'pengaturan'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-            <span>Pengaturan Kantor</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
-              activeTab === 'pengaturan' 
-                ? 'bg-blue-700/60 text-blue-100' 
-                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-            }`}>
-              Admin
-            </span>
-          </button>
+          {/* Pengaturan Kantor - Only for Superadmin */}
+          {isSuperadmin && (
+            <button
+              type="button"
+              id="nav-tab-pengaturan"
+              onClick={() => onTabChange('pengaturan')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'pengaturan'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span>Pengaturan Kantor</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                activeTab === 'pengaturan' 
+                  ? 'bg-purple-700/60 text-purple-100' 
+                  : 'bg-purple-50 text-purple-700 border border-purple-200'
+              }`}>
+                Superadmin
+              </span>
+            </button>
+          )}
         </div>
 
       </div>

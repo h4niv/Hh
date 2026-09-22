@@ -353,10 +353,16 @@ export default function LeaveManagement({
 
   const activeEmpIdSet = useMemo(() => new Set(employees.map(e => e.id)), [employees]);
 
-  // Filtered requests list (only active employees)
+  // Filtered requests list (only active employees, and restricted to current user if not admin/superadmin)
   const filteredRequests = useMemo(() => {
     return requests.filter((req) => {
       if (!activeEmpIdSet.has(req.employeeId)) return false;
+
+      // Pembatasan Akses: Karyawan biasa hanya dapat melihat pengajuan izin dirinya sendiri
+      if (!isAdminOrSuper && req.employeeId !== currentEmployee.id) {
+        return false;
+      }
+
       if (filterTab === 'cuti_sakit') {
         return req.type !== 'Izin Datang Terlambat' && req.type !== 'Izin Pulang Awal';
       }
@@ -371,7 +377,7 @@ export default function LeaveManagement({
       }
       return true;
     });
-  }, [requests, filterTab, activeEmpIdSet]);
+  }, [requests, filterTab, activeEmpIdSet, isAdminOrSuper, currentEmployee.id]);
 
   const totalLateRequestsAll = useMemo(() => {
     return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat').length;
