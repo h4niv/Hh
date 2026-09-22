@@ -212,10 +212,10 @@ export default function ClockCard({
                       id="btn-clockcard-fingerprint"
                       onClick={onOpenFingerprintModal}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[11px] bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
-                      title="Sinkronisasi & Konfigurasi Mesin Fingerprint LAN"
+                      title="Sinkronisasi & Konfigurasi Mesin Mbio MB800C LAN"
                     >
                       <Fingerprint className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Mesin Fingerprint (LAN)</span>
+                      <span>Mesin Mbio MB800C (LAN)</span>
                     </button>
                   )}
 

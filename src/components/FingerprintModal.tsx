@@ -106,15 +106,15 @@ export default function FingerprintModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSimulatingLive, setIsSimulatingLive] = useState<boolean>(false);
 
-  // ================= SOLUTION MACHINE IP CONFIG =================
-  const [solutionModel, setSolutionModel] = useState<string>('Solution X100-C');
+  // ================= MBIO MB800C & SOLUTION MACHINE IP CONFIG =================
+  const [solutionModel, setSolutionModel] = useState<string>('Mbio MB800C');
   const [solutionIp, setSolutionIp] = useState<string>('192.168.1.201');
-  const [solutionPort, setSolutionPort] = useState<number>(80);
+  const [solutionPort, setSolutionPort] = useState<number>(4370);
   const [solutionCommKey, setSolutionCommKey] = useState<string>('0');
-  const [solutionName, setSolutionName] = useState<string>('Mesin Solution X100-C (Lobi Utama)');
+  const [solutionName, setSolutionName] = useState<string>('Mesin Mbio MB800C (Lobi Utama)');
   const [pullDateRange, setPullDateRange] = useState<'today' | 'yesterday_today' | 'week' | 'month'>('today');
   
-  // Solution Connection States
+  // Mbio / Solution Connection States
   const [isTestingSolution, setIsTestingSolution] = useState<boolean>(false);
   const [solutionTestStatus, setSolutionTestStatus] = useState<{
     status: 'idle' | 'online' | 'offline';
@@ -127,7 +127,7 @@ export default function FingerprintModal({
       userCount: number;
       logCount: number;
     };
-  }>({ status: 'online', latencyMs: 16, message: 'Mesin Solution merespon normal via HTTP SOAP Port 80.' });
+  }>({ status: 'online', latencyMs: 12, message: 'Mesin Mbio MB800C merespon normal via Port 4370 TCP/IP.' });
 
   const [isPullingLogs, setIsPullingLogs] = useState<boolean>(false);
   const [solutionScriptTab, setSolutionScriptTab] = useState<'php' | 'node' | 'python' | 'soap'>('php');
@@ -708,12 +708,12 @@ export default function FingerprintModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white tracking-tight">Koneksi Mesin Fingerprint Solution (via IP)</h3>
+                <h3 className="text-base font-bold text-white tracking-tight">Koneksi Mesin Fingerprint Mbio MB800C & LAN</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                  Solution Official Protocol
+                  Mbio MB800C • Port 4370 & ADMS
                 </span>
               </div>
-              <p className="text-xs text-slate-300">Integrasi Langsung via IP Address LAN / Web Service SOAP Port 80 & 4370 Mesin Solution</p>
+              <p className="text-xs text-slate-300">Integrasi Presensi Real-Time via Port 4370 TCP/IP LAN & Cloud Server untuk Mesin Mbio MB-800C</p>
             </div>
           </div>
           <button
@@ -984,6 +984,68 @@ export default function FingerprintModal({
                   <Server className="w-4 h-4 text-blue-600" />
                   3 Metode Otomatisasi untuk Mesin di Jaringan LAN:
                 </h4>
+
+                {/* Specialized Mbio MB800C Quick Guide Card */}
+                <div className="p-4 bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-2xl border border-indigo-500/30 shadow-md space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-800/60 pb-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300 font-extrabold text-xs">
+                        MB
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <span>Panduan Khusus Mesin Mbio MB800C (Real-Time LAN)</span>
+                          <span className="px-2 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-semibold">
+                            Model Terdeteksi
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-indigo-200">
+                          Panduan praktis menghubungkan mesin Mbio MB-800C ke aplikasi via kabel LAN / WiFi
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950/80 px-2.5 py-1 rounded-lg border border-indigo-800 shrink-0">
+                      Default: 192.168.1.201:4370 (CommKey: 0)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+                      <div className="font-bold text-indigo-300 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
+                        Setting IP di Mesin MB800C
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Tekan tombol <strong>Menu / M/OK</strong> di mesin Mbio MB800C &gt; <strong>Komunikasi (Comm)</strong> &gt; <strong>Jaringan (Network)</strong>:
+                        <br />• IP Address: <code className="text-emerald-400">192.168.1.201</code>
+                        <br />• Gateway: <code className="text-emerald-400">192.168.1.1</code>
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+                      <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">2</span>
+                        Pilihan A: Auto Push (ADMS)
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Di menu mesin Mbio MB800C: <strong>Komunikasi</strong> &gt; <strong>Cloud Server / Web Server</strong>:
+                        <br />• Enable Cloud Server: <strong>Yes / On</strong>
+                        <br />• Server Address: <code className="text-emerald-400 font-mono text-[10px]">{typeof window !== 'undefined' ? window.location.hostname : 'domain'}</code>
+                        <br />• Server Port: <code className="text-emerald-400">3000</code>
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+                      <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-amber-600 text-white text-[10px] flex items-center justify-center font-bold">3</span>
+                        Pilihan B: Mbio LAN Agent (Port 4370)
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Jika mesin MB800C tanpa menu Cloud Server, buka tab <strong>Auto Sync Agent</strong> &gt; Download file <code className="text-amber-300 font-mono">mbio_mb800c_agent.js</code> lalu jalankan di 1 PC kantor yang se-jaringan LAN dengan mesin.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                   
@@ -1579,13 +1641,17 @@ export default function FingerprintModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {/* Model Selector */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Tipe / Seri Mesin Solution</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Tipe / Seri Mesin Absensi</label>
                     <select
                       id="solution-model-select"
                       value={solutionModel}
                       onChange={(e) => setSolutionModel(e.target.value)}
                       className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500"
                     >
+                      <option value="Mbio MB800C">Mbio MB800C (Colour Screen & LAN/TCP)</option>
+                      <option value="Mbio MB700">Mbio MB700 / MB700-C</option>
+                      <option value="Mbio MB300">Mbio MB300 / MB300-C</option>
+                      <option value="Mbio MB-Series">Mbio MB-Series Lainnya (Port 4370)</option>
                       <option value="Solution X100-C">Solution X100-C (Colour TFT)</option>
                       <option value="Solution X105">Solution X105 (Standalone IP)</option>
                       <option value="Solution X302">Solution X302 / X302-S (Face+FP)</option>
@@ -1593,7 +1659,8 @@ export default function FingerprintModal({
                       <option value="Solution X601">Solution X601 (Big Screen)</option>
                       <option value="Solution X900">Solution X900 (High Speed)</option>
                       <option value="Solution P207">Solution P207 / P208 (Portable)</option>
-                      <option value="Solution Generic ZK">Solution Generic (SOAP/ZK)</option>
+                      <option value="ZKTeco K40 / MB20">ZKTeco K40 / MB20 / IN01</option>
+                      <option value="Solution Generic ZK">Generic ZK / Biometric SOAP</option>
                     </select>
                   </div>
 
