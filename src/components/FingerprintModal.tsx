@@ -32,7 +32,8 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertTriangle,
-  Flame
+  Flame,
+  Sparkles
 } from 'lucide-react';
 import { Employee, AttendanceRecord, OfficeConfig } from '../types';
 import { 
@@ -54,6 +55,8 @@ import {
 } from '../utils/solutionFingerprint';
 import { calculateLateMinutes, calculateEarlyMinutes, getTodayDateString } from '../utils/geo';
 
+import { PunchEvent, AutoProcessResult } from '../services/fingerprintAutoReceiver';
+
 interface FingerprintModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -62,6 +65,12 @@ interface FingerprintModalProps {
   attendanceRecords: AttendanceRecord[];
   onUpdateEmployees?: (employees: Employee[]) => void;
   onAddOrUpdateRecords: (records: AttendanceRecord[]) => void;
+  isLiveConnected?: boolean;
+  lastPunch?: PunchEvent | null;
+  punchFeed?: AutoProcessResult[];
+  onSimulatePunch?: (pin: string, name?: string) => Promise<any>;
+  autoReceiverEnabled?: boolean;
+  onToggleAutoReceiver?: (enabled: boolean) => void;
 }
 
 interface RawPunchLog {
@@ -83,12 +92,19 @@ export default function FingerprintModal({
   attendanceRecords,
   onUpdateEmployees,
   onAddOrUpdateRecords,
+  isLiveConnected = true,
+  lastPunch = null,
+  punchFeed = [],
+  onSimulatePunch,
+  autoReceiverEnabled = true,
+  onToggleAutoReceiver,
 }: FingerprintModalProps) {
-  // Active Tab - Defaulting to Solution IP Connection or Diagnostics
-  const [activeTab, setActiveTab] = useState<'solution' | 'diagnostics' | 'mapping' | 'simulate' | 'agent' | 'android' | 'upload' | 'guide' | 'error-guide'>('diagnostics');
+  // Active Tab - Defaulting to Auto LAN Receiver
+  const [activeTab, setActiveTab] = useState<'auto-lan' | 'solution' | 'diagnostics' | 'mapping' | 'simulate' | 'agent' | 'android' | 'upload' | 'guide' | 'error-guide'>('auto-lan');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSimulatingLive, setIsSimulatingLive] = useState<boolean>(false);
 
   // ================= SOLUTION MACHINE IP CONFIG =================
   const [solutionModel, setSolutionModel] = useState<string>('Solution X100-C');
@@ -713,6 +729,20 @@ export default function FingerprintModal({
         {/* Navigation Tabs */}
         <div className="flex border-b border-slate-200 px-6 bg-slate-50/80 overflow-x-auto gap-1 py-1">
           <button
+            id="tab-auto-lan"
+            onClick={() => setActiveTab('auto-lan')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer rounded-t-lg ${
+              activeTab === 'auto-lan'
+                ? 'border-emerald-600 text-emerald-800 bg-white shadow-2xs font-extrabold'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <Zap className="w-4 h-4 text-emerald-600" />
+            <span>⚡ Penerima Otomatis LAN (Real-Time Push)</span>
+          </button>
+
+          <button
             id="tab-diagnostics"
             onClick={() => setActiveTab('diagnostics')}
             className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer rounded-t-lg ${
@@ -825,6 +855,368 @@ export default function FingerprintModal({
               <button onClick={() => setErrorMsg(null)} className="text-rose-700 hover:text-rose-900">
                 <X className="w-4 h-4" />
               </button>
+            </div>
+          )}
+
+          {/* ================= TAB: AUTO LAN REAL-TIME RECEIVER ================= */}
+          {activeTab === 'auto-lan' && (
+            <div className="space-y-6" id="auto-lan-panel">
+              
+              {/* Top Banner: Realtime Gateway Active */}
+              <div className="p-5 bg-gradient-to-r from-emerald-900 via-slate-900 to-indigo-950 text-white rounded-2xl border border-emerald-500/30 shadow-md">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0 shadow-inner">
+                      <Zap className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-base font-bold text-white">
+                          Penerima Presensi Otomatis Mesin LAN
+                        </h4>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1.5 ${
+                          isLiveConnected
+                            ? 'bg-emerald-500 text-slate-950 shadow-xs'
+                            : 'bg-amber-500 text-slate-950'
+                        }`}>
+                          <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+                          {isLiveConnected ? 'GATEWAY AKTIF & SIAP' : 'MENGHUBUNGKAN...'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        Data scan sidik jari dari mesin di jaringan LAN akan <strong>otomatis diterima dan dicatat langsung</strong> sebagai presensi masuk/pulang tanpa perlu export/import manual!
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <div className="flex items-center gap-3 bg-white/10 px-4 py-2 rounded-xl border border-white/10 shrink-0">
+                    <span className="text-xs font-semibold text-slate-200">Auto-Receiver:</span>
+                    <button
+                      type="button"
+                      id="toggle-auto-receiver"
+                      onClick={() => onToggleAutoReceiver?.(!autoReceiverEnabled)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                        autoReceiverEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          autoReceiverEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                    <span className="text-xs font-bold text-emerald-300">
+                      {autoReceiverEnabled ? 'AKTIF' : 'NONAKTIF'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Webhook & ADMS Endpoints Box */}
+              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Globe className="w-4 h-4 text-indigo-600" />
+                    Endpoint Penerima Server (Gunakan URL ini di Mesin atau Script Agent)
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">Protokol: ADMS / HTTP Webhook</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Endpoint 1: ADMS Cloud Server */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-indigo-700">1. URL ADMS / Cloud Server Mesin:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${window.location.origin}/iclock/cdata`;
+                          navigator.clipboard.writeText(url);
+                          setCopiedKey('adms-url');
+                          setTimeout(() => setCopiedKey(null), 2000);
+                        }}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'adms-url' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'adms-url' ? 'Tersalin!' : 'Salin'}</span>
+                      </button>
+                    </div>
+                    <div className="p-2 bg-slate-900 text-emerald-400 font-mono text-xs rounded-lg select-all break-all">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/iclock/cdata` : '/iclock/cdata'}
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      Masukkan domain ini di menu mesin: <strong>Menu &gt; Comm &gt; Cloud Server / ADMS</strong>
+                    </p>
+                  </div>
+
+                  {/* Endpoint 2: REST JSON Webhook Push */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-indigo-700">2. URL REST JSON Webhook:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${window.location.origin}/api/fingerprint/push`;
+                          navigator.clipboard.writeText(url);
+                          setCopiedKey('push-url');
+                          setTimeout(() => setCopiedKey(null), 2000);
+                        }}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'push-url' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'push-url' ? 'Tersalin!' : 'Salin'}</span>
+                      </button>
+                    </div>
+                    <div className="p-2 bg-slate-900 text-emerald-400 font-mono text-xs rounded-lg select-all break-all">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/api/fingerprint/push` : '/api/fingerprint/push'}
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      Menerima payload JSON: <code className="bg-slate-100 px-1 rounded text-slate-800 font-bold font-mono">&#123; pin: "1", timestamp: "..." &#125;</code>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3 Practical Setup Methods for LAN Machines */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Server className="w-4 h-4 text-blue-600" />
+                  3 Metode Otomatisasi untuk Mesin di Jaringan LAN:
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                  
+                  {/* Card Method 1 */}
+                  <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs flex flex-col justify-between hover:border-emerald-300 transition-all">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-extrabold flex items-center justify-center">
+                          A
+                        </span>
+                        <h5 className="text-xs font-bold text-slate-900">Setting ADMS di Mesin</h5>
+                      </div>
+                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        ⭐ Paling Direkomendasikan
+                      </span>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Jika mesin Solution/ZKTeco memiliki fitur <strong>ADMS / Cloud Server</strong>, cukup isi Server Address dengan domain SIAP-TEX. Mesin akan langsung menembak data otomatis setiap scan jari!
+                      </p>
+                    </div>
+                    <div className="pt-3 mt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('guide')}
+                        className="w-full py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <span>Lihat Panduan ADMS</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card Method 2 */}
+                  <div className="bg-white p-4 rounded-2xl border border-indigo-200 shadow-xs flex flex-col justify-between hover:border-indigo-300 transition-all">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-800 text-xs font-extrabold flex items-center justify-center">
+                          B
+                        </span>
+                        <h5 className="text-xs font-bold text-slate-900">SIAP-TEX LAN Bridge Agent</h5>
+                      </div>
+                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        Untuk Mesin Port 4370
+                      </span>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Jalankan 1 script bridge ringan di komputer kantor/sekolah (PC Guru/TU) yang satu jaringan LAN dengan mesin. Script ini mendengarkan port 4370 dan meneruskannya realtime ke cloud.
+                      </p>
+                    </div>
+                    <div className="pt-3 mt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('agent')}
+                        className="w-full py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Server className="w-3.5 h-3.5" />
+                        <span>Download Script Bridge</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card Method 3 */}
+                  <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs flex flex-col justify-between hover:border-blue-300 transition-all">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-800 text-xs font-extrabold flex items-center justify-center">
+                          C
+                        </span>
+                        <h5 className="text-xs font-bold text-slate-900">Auto-Pull Browser LAN</h5>
+                      </div>
+                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                        Via Komputer Resepsionis
+                      </span>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Buka aplikasi ini di komputer kantor pada jam kerja, sistem di browser akan otomatis melakukan query periodik ke IP mesin lokal untuk menarik log presensi terbaru.
+                      </p>
+                    </div>
+                    <div className="pt-3 mt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsLivePolling(!isLivePolling);
+                          if (!isLivePolling) {
+                            setSuccessMsg('✓ Auto-Polling Browser diaktifkan (Mengecek mesin LAN secara otomatis).');
+                          }
+                        }}
+                        className={`w-full py-1.5 px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                          isLivePolling
+                            ? 'bg-rose-100 hover:bg-rose-200 text-rose-800'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isLivePolling ? 'animate-spin' : ''}`} />
+                        <span>{isLivePolling ? 'Hentikan Auto-Pull' : 'Mulai Auto-Pull (10s)'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Live Instant Test Simulator */}
+              <div className="bg-gradient-to-br from-amber-50/80 via-white to-indigo-50/50 rounded-2xl border border-amber-200/90 p-5 shadow-xs space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      Uji Coba Alur Otomatis (Live Simulation)
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Klik salah satu karyawan di bawah ini untuk mensimulasikan scan sidik jari pada mesin LAN. Sistem akan langsung memproses presensi, memutar nada bunyi, dan memperbarui status realtime!
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shrink-0">
+                    Waktu Uji: {new Date().toLocaleTimeString('id-ID')} WIB
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 pt-2">
+                  {employees.slice(0, 8).map((emp, idx) => {
+                    const pin = emp.fingerprintPin || emp.nik || String(idx + 1);
+                    return (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        id={`btn-sim-employee-${emp.id}`}
+                        disabled={isSimulatingLive}
+                        onClick={async () => {
+                          setIsSimulatingLive(true);
+                          setSuccessMsg(null);
+                          try {
+                            if (onSimulatePunch) {
+                              await onSimulatePunch(pin, emp.name);
+                            } else {
+                              const res = await fetch('/api/fingerprint/simulate', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ pin, name: emp.name })
+                              });
+                              await res.json();
+                            }
+                            setSuccessMsg(`✓ Simulasi scan jari berhasil untuk [${emp.name}] (PIN: ${pin}). Presensi otomatis tercatat!`);
+                          } catch (e) {
+                            setErrorMsg('Gagal menjalankan simulasi.');
+                          } finally {
+                            setIsSimulatingLive(false);
+                          }
+                        }}
+                        className="flex items-center gap-2 p-2 rounded-xl bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-left transition-all shadow-2xs cursor-pointer group"
+                      >
+                        <img
+                          src={emp.avatarUrl}
+                          alt={emp.name}
+                          className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-slate-900 truncate group-hover:text-amber-800">
+                            {emp.name}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            PIN: <strong className="text-indigo-600">{pin}</strong>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Real-time Incoming Feed Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-emerald-600 animate-pulse" />
+                    <h4 className="text-xs font-bold text-slate-900">
+                      Live Log Scan Jari yang Masuk ({punchFeed.length > 0 ? punchFeed.length : rawLogsFeed.length} data)
+                    </h4>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    Status: <strong className="text-emerald-700">Mendengarkan Port 3000 / SSE</strong>
+                  </span>
+                </div>
+
+                <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                  {punchFeed.length > 0 ? (
+                    punchFeed.map((item, idx) => (
+                      <div key={item.punch.id || idx} className="p-3 hover:bg-slate-50 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                            item.type === 'check_in' 
+                              ? 'bg-emerald-100 text-emerald-800' 
+                              : item.type === 'check_out'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-slate-100 text-slate-800'
+                          }`}>
+                            <Fingerprint className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 truncate flex items-center gap-2">
+                              <span>{item.employee?.name || `PIN [${item.punch.pin}]`}</span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 font-mono text-slate-600">
+                                PIN: {item.punch.pin}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 truncate">
+                              {item.message}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="font-mono font-bold text-slate-800 text-xs">
+                            {item.punch.timestamp.split(' ')[1] || item.punch.timestamp}
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            item.record?.status === 'Hadir Tepat Waktu'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : item.record?.status === 'Terlambat'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {item.record?.status || 'Diproses'}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-slate-400 text-xs">
+                      <Fingerprint className="w-8 h-8 mx-auto mb-2 opacity-30 animate-pulse text-indigo-600" />
+                      Belum ada scan sidik jari baru. Cobalah lakukan tap jari di mesin LAN atau tekan salah satu tombol simulasi di atas.
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           )}
 

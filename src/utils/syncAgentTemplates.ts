@@ -67,7 +67,7 @@ export function generateNodeSyncAgentCode(config: SyncAgentConfig): string {
     '  });',
     '',
     "  const baseUrl = CONFIG.SERVER_URL.endsWith('/') ? CONFIG.SERVER_URL.slice(0, -1) : CONFIG.SERVER_URL;",
-    "  const parsedUrl = new URL(baseUrl + '/api/fingerprint/sync');",
+    "  const parsedUrl = new URL(baseUrl + '/api/fingerprint/lan-sync');",
     "  const isHttps = parsedUrl.protocol === 'https:';",
     '  const client = isHttps ? https : http;',
     '',

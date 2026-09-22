@@ -44,6 +44,8 @@ import AutoAttendanceModal from './components/AutoAttendanceModal';
 import PermitRecapDashboard from './components/PermitRecapDashboard';
 import FingerprintModal from './components/FingerprintModal';
 import AndroidAppModal from './components/AndroidAppModal';
+import LiveFingerprintToast from './components/LiveFingerprintToast';
+import { useFingerprintLiveStream } from './hooks/useFingerprintLiveStream';
 import {
   syncAttendanceRecordToFirestore,
   deleteAttendanceRecordFromFirestore,
@@ -284,6 +286,36 @@ export default function App() {
       setToastMessage(null);
     }, 4000);
   };
+
+  // Real-time Automatic Fingerprint Punch Receiver via Server-Sent Events (SSE)
+  const {
+    isConnected: isFingerprintConnected,
+    lastPunch,
+    punchFeed,
+    activeNotification,
+    autoReceiverEnabled,
+    setAutoReceiverEnabled,
+    simulatePunch,
+    dismissNotification
+  } = useFingerprintLiveStream({
+    employees,
+    attendanceRecords,
+    officeConfig,
+    onRecordUpdated: (record) => {
+      setAttendanceRecords((prev) => {
+        const idx = prev.findIndex((r) => r.id === record.id || (r.employeeId === record.employeeId && r.date === record.date));
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = record;
+          return next;
+        }
+        return [record, ...prev];
+      });
+    },
+    onShowToast: (text, type) => {
+      showToast(text, type);
+    }
+  });
 
   // Selected Employee
   const currentEmployee = useMemo(() => {
@@ -1120,6 +1152,7 @@ export default function App() {
                 }
               }}
               onOpenAutoAttendanceModal={() => setIsAutoAttendanceModalOpen(true)}
+              onOpenFingerprintModal={() => setIsFingerprintModalOpen(true)}
               userDistanceToOffice={userDistanceToOffice}
               isWithinOfficeRadius={isWithinOfficeRadius}
             />
@@ -1440,6 +1473,12 @@ export default function App() {
         officeConfig={officeConfig}
         employees={employees}
         attendanceRecords={attendanceRecords}
+        isLiveConnected={isFingerprintConnected}
+        lastPunch={lastPunch}
+        punchFeed={punchFeed}
+        onSimulatePunch={simulatePunch}
+        autoReceiverEnabled={autoReceiverEnabled}
+        onToggleAutoReceiver={setAutoReceiverEnabled}
         onUpdateEmployees={(updated) => {
           setEmployees(updated);
           updated.forEach(e => syncEmployeeToFirestore(e));
@@ -1453,6 +1492,12 @@ export default function App() {
           newRecs.forEach((r) => syncAttendanceRecordToFirestore(r));
           showToast(`Berhasil mengimpor dan menyinkronkan data presensi mesin fingerprint ke Firebase!`, 'success');
         }}
+      />
+
+      {/* Real-time Live Fingerprint Pop-up Alert */}
+      <LiveFingerprintToast
+        notification={activeNotification}
+        onDismiss={dismissNotification}
       />
 
       {/* Android PWA & Native APK Guidance Modal */}
