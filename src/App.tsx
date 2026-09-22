@@ -311,6 +311,7 @@ export default function App() {
         }
         return [record, ...prev];
       });
+      syncAttendanceRecordToFirestore(record).catch(e => console.warn('Sync fingerprint attendance error:', e));
     },
     onShowToast: (text, type) => {
       showToast(text, type);
