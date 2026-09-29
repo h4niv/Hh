@@ -21,7 +21,14 @@ import {
   Pencil,
   Trash2,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Calendar,
+  Filter,
+  SlidersHorizontal,
+  ArrowDownUp
 } from 'lucide-react';
 import { LeaveRequest, LeaveType, LeaveStatus, Employee, OfficeConfig } from '../types';
 import { getTodayDateString } from '../utils/geo';
@@ -95,6 +102,12 @@ export default function LeaveManagement({
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     return new Date().toISOString().slice(0, 7); // e.g. "2026-09"
   });
+
+  // Table Sorting, Filter & Search States
+  const [sortField, setSortField] = useState<'startDate' | 'appliedAt' | 'employeeName' | 'totalDays' | 'status'>('startDate');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [tableSearchQuery, setTableSearchQuery] = useState<string>('');
+  const [tableMonthFilter, setTableMonthFilter] = useState<string>('all');
 
   // Target Employee State for Form
   const [targetEmpId, setTargetEmpId] = useState<string>(currentEmployee.id);
@@ -353,9 +366,36 @@ export default function LeaveManagement({
 
   const activeEmpIdSet = useMemo(() => new Set(employees.map(e => e.id)), [employees]);
 
-  // Filtered requests list (only active employees, and restricted to current user if not admin/superadmin)
+  // Handler for column sort toggle
+  const handleSort = (field: 'startDate' | 'appliedAt' | 'employeeName' | 'totalDays' | 'status') => {
+    if (sortField === field) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      // Default: date & duration desc (newest/longest first), employeeName asc (A-Z)
+      setSortDirection(field === 'employeeName' ? 'asc' : 'desc');
+    }
+  };
+
+  // Extract available months from requests for the month filter dropdown
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    monthsSet.add(currentMonthStr);
+    requests.forEach(r => {
+      if (r.startDate && r.startDate.length >= 7) {
+        monthsSet.add(r.startDate.slice(0, 7));
+      }
+      if (r.appliedAt && r.appliedAt.length >= 7) {
+        monthsSet.add(r.appliedAt.slice(0, 7));
+      }
+    });
+    return Array.from(monthsSet).sort().reverse();
+  }, [requests]);
+
+  // Filtered and Sorted requests list (only active employees, restricted to current user if not admin/superadmin, sorted by chosen field)
   const filteredRequests = useMemo(() => {
-    return requests.filter((req) => {
+    const list = requests.filter((req) => {
       if (!activeEmpIdSet.has(req.employeeId)) return false;
 
       // Pembatasan Akses: Karyawan biasa hanya dapat melihat pengajuan izin dirinya sendiri
@@ -364,20 +404,80 @@ export default function LeaveManagement({
       }
 
       if (filterTab === 'cuti_sakit') {
-        return req.type !== 'Izin Datang Terlambat' && req.type !== 'Izin Pulang Awal';
+        if (req.type === 'Izin Datang Terlambat' || req.type === 'Izin Pulang Awal') return false;
+      } else if (filterTab === 'terlambat') {
+        if (req.type !== 'Izin Datang Terlambat') return false;
+      } else if (filterTab === 'pulang_awal') {
+        if (req.type !== 'Izin Pulang Awal') return false;
+      } else if (filterTab === 'pending') {
+        if (req.status !== 'Menunggu') return false;
       }
-      if (filterTab === 'terlambat') {
-        return req.type === 'Izin Datang Terlambat';
+
+      // Filter berdasarkan bulan jika dipilih
+      if (tableMonthFilter !== 'all') {
+        const matchesStart = req.startDate && req.startDate.startsWith(tableMonthFilter);
+        const matchesEnd = req.endDate && req.endDate.startsWith(tableMonthFilter);
+        const matchesApplied = req.appliedAt && req.appliedAt.startsWith(tableMonthFilter);
+        if (!matchesStart && !matchesEnd && !matchesApplied) {
+          return false;
+        }
       }
-      if (filterTab === 'pulang_awal') {
-        return req.type === 'Izin Pulang Awal';
+
+      // Filter berdasarkan kata kunci pencarian (Nama, NIK, Departemen, Tanggal, Alasan, Catatan, Jenis)
+      if (tableSearchQuery.trim()) {
+        const q = tableSearchQuery.toLowerCase().trim();
+        const matchName = req.employeeName?.toLowerCase().includes(q);
+        const matchNik = req.employeeNik?.toLowerCase().includes(q);
+        const matchDept = req.department?.toLowerCase().includes(q);
+        const matchReason = req.reason?.toLowerCase().includes(q);
+        const matchType = req.type?.toLowerCase().includes(q);
+        const matchNotes = req.notes?.toLowerCase().includes(q);
+        const matchDate = req.startDate?.includes(q) || req.endDate?.includes(q) || (req.appliedAt && req.appliedAt.includes(q));
+        if (!matchName && !matchNik && !matchDept && !matchReason && !matchType && !matchNotes && !matchDate) {
+          return false;
+        }
       }
-      if (filterTab === 'pending') {
-        return req.status === 'Menunggu';
-      }
+
       return true;
     });
-  }, [requests, filterTab, activeEmpIdSet, isAdminOrSuper, currentEmployee.id]);
+
+    // Urutkan (Sorting) data pengajuan
+    list.sort((a, b) => {
+      let comparison = 0;
+
+      if (sortField === 'startDate') {
+        // Urutan tanggal pelaksanaan (startDate)
+        const dateA = a.startDate || '';
+        const dateB = b.startDate || '';
+        comparison = dateA.localeCompare(dateB);
+        // Jika tanggal sama, urutkan berdasarkan waktu pengajuan dibuat
+        if (comparison === 0) {
+          const appliedA = a.appliedAt || '';
+          const appliedB = b.appliedAt || '';
+          comparison = appliedA.localeCompare(appliedB);
+        }
+      } else if (sortField === 'appliedAt') {
+        // Urutan tanggal & jam pengajuan dibuat (appliedAt)
+        const appliedA = a.appliedAt || '';
+        const appliedB = b.appliedAt || '';
+        comparison = appliedA.localeCompare(appliedB);
+      } else if (sortField === 'employeeName') {
+        comparison = (a.employeeName || '').localeCompare(b.employeeName || '', 'id');
+      } else if (sortField === 'totalDays') {
+        // Hitung total ekuivalen durasi
+        const durA = (a.totalDays * 480) + (a.lateMinutes || 0) + (a.earlyDepartureMinutes || 0);
+        const durB = (b.totalDays * 480) + (b.lateMinutes || 0) + (b.earlyDepartureMinutes || 0);
+        comparison = durA - durB;
+      } else if (sortField === 'status') {
+        const statusOrder: Record<string, number> = { 'Menunggu': 1, 'Disetujui': 2, 'Ditolak': 3 };
+        comparison = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+      }
+
+      return sortDirection === 'desc' ? -comparison : comparison;
+    });
+
+    return list;
+  }, [requests, filterTab, activeEmpIdSet, isAdminOrSuper, currentEmployee.id, tableMonthFilter, tableSearchQuery, sortField, sortDirection]);
 
   const totalLateRequestsAll = useMemo(() => {
     return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat').length;
@@ -970,17 +1070,189 @@ export default function LeaveManagement({
           </div>
         </div>
 
+        {/* Search, Filter & Quick Sort Toolbar */}
+        <div className="px-5 py-3 border-b border-slate-200 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={tableSearchQuery}
+              onChange={(e) => setTableSearchQuery(e.target.value)}
+              placeholder="Cari nama karyawan, NIK, tanggal (YYYY-MM-DD), atau alasan..."
+              className="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 placeholder:text-slate-400"
+            />
+            {tableSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setTableSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                title="Hapus pencarian"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Month Filter & Sort Selector */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filter Month Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden sm:inline">Bulan:</span>
+              </span>
+              <select
+                value={tableMonthFilter}
+                onChange={(e) => setTableMonthFilter(e.target.value)}
+                className="text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+              >
+                <option value="all">Semua Bulan</option>
+                {availableMonths.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sort Selector Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden sm:inline">Urutkan:</span>
+              </span>
+              <select
+                value={`${sortField}_${sortDirection}`}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'startDate_desc') { setSortField('startDate'); setSortDirection('desc'); }
+                  else if (val === 'startDate_asc') { setSortField('startDate'); setSortDirection('asc'); }
+                  else if (val === 'appliedAt_desc') { setSortField('appliedAt'); setSortDirection('desc'); }
+                  else if (val === 'appliedAt_asc') { setSortField('appliedAt'); setSortDirection('asc'); }
+                  else if (val === 'employeeName_asc') { setSortField('employeeName'); setSortDirection('asc'); }
+                  else if (val === 'employeeName_desc') { setSortField('employeeName'); setSortDirection('desc'); }
+                  else if (val === 'status_asc') { setSortField('status'); setSortDirection('asc'); }
+                  else if (val === 'totalDays_desc') { setSortField('totalDays'); setSortDirection('desc'); }
+                }}
+                className="text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+              >
+                <option value="startDate_desc">📅 Tanggal Pelaksanaan: Terbaru ➔ Terlama</option>
+                <option value="startDate_asc">📅 Tanggal Pelaksanaan: Terlama ➔ Terbaru</option>
+                <option value="appliedAt_desc">🕒 Waktu Input Pengajuan: Terbaru ➔ Terlama</option>
+                <option value="appliedAt_asc">🕒 Waktu Input Pengajuan: Terlama ➔ Terbaru</option>
+                <option value="employeeName_asc">👤 Nama Karyawan: A ➔ Z</option>
+                <option value="employeeName_desc">👤 Nama Karyawan: Z ➔ A</option>
+                <option value="status_asc">⏳ Status: Menunggu Review Dahulu</option>
+                <option value="totalDays_desc">⏱️ Durasi / Hari: Terbesar ➔ Terkecil</option>
+              </select>
+            </div>
+
+            {/* Quick 1-Click Toggle for Date Sort */}
+            <button
+              type="button"
+              onClick={() => {
+                if (sortField !== 'startDate') {
+                  setSortField('startDate');
+                  setSortDirection('desc');
+                } else {
+                  setSortDirection(prev => (prev === 'desc' ? 'asc' : 'desc'));
+                }
+              }}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
+                sortField === 'startDate'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Klik untuk beralih antara Tanggal Terbaru dan Terlama"
+            >
+              <ArrowDownUp className="w-3.5 h-3.5" />
+              <span>
+                {sortField === 'startDate' && sortDirection === 'desc'
+                  ? 'Tgl Terbaru (Z-A)'
+                  : sortField === 'startDate' && sortDirection === 'asc'
+                  ? 'Tgl Terlama (A-Z)'
+                  : 'Urut Tanggal'}
+              </span>
+            </button>
+          </div>
+        </div>
+
         {/* Requests Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-600 border-collapse">
             <thead className="bg-slate-50 text-slate-700 uppercase tracking-wider text-[11px] font-semibold border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3">Karyawan</th>
+                <th 
+                  className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  onClick={() => handleSort('employeeName')}
+                  title="Klik untuk urutkan berdasarkan Nama Karyawan"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Karyawan</span>
+                    {sortField === 'employeeName' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    )}
+                  </div>
+                </th>
+
                 <th className="px-4 py-3">Jenis Pengajuan</th>
-                <th className="px-4 py-3">Tanggal / Estimasi Waktu</th>
-                <th className="px-4 py-3">Durasi / Waktu</th>
+
+                <th 
+                  className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  onClick={() => handleSort('startDate')}
+                  title="Klik untuk urutkan berdasarkan Tanggal Izin / Cuti"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Tanggal / Estimasi Waktu</span>
+                    {sortField === 'startDate' ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold lowercase">
+                        {sortDirection === 'desc' ? (
+                          <><span>terbaru</span> <ArrowDown className="w-3 h-3 text-blue-700" /></>
+                        ) : (
+                          <><span>terlama</span> <ArrowUp className="w-3 h-3 text-blue-700" /></>
+                        )}
+                      </span>
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    )}
+                  </div>
+                </th>
+
+                <th 
+                  className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  onClick={() => handleSort('totalDays')}
+                  title="Klik untuk urutkan berdasarkan Durasi"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Durasi / Waktu</span>
+                    {sortField === 'totalDays' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    )}
+                  </div>
+                </th>
+
                 <th className="px-4 py-3">Alasan / Keterangan</th>
-                <th className="px-4 py-3">Status</th>
+
+                <th 
+                  className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  onClick={() => handleSort('status')}
+                  title="Klik untuk urutkan berdasarkan Status Review"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Status</span>
+                    {sortField === 'status' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    )}
+                  </div>
+                </th>
+
                 <th className="px-4 py-3 text-right">
                   {isSuperAdmin ? 'Aksi (Review / Edit / Hapus)' : 'Aksi Review HRD'}
                 </th>
@@ -990,7 +1262,22 @@ export default function LeaveManagement({
               {filteredRequests.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
-                    Tidak ada data pengajuan dalam kategori ini.
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <FileText className="w-8 h-8 text-slate-300" />
+                      <p className="font-medium text-slate-500">Tidak ada data pengajuan yang sesuai kriteria.</p>
+                      {(tableSearchQuery || tableMonthFilter !== 'all') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTableSearchQuery('');
+                            setTableMonthFilter('all');
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-semibold cursor-pointer underline"
+                        >
+                          Reset Filter & Pencarian
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
