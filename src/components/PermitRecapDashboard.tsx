@@ -36,6 +36,7 @@ interface PermitRecapDashboardProps {
   onUpdateStatus?: (requestId: string, newStatus: 'Disetujui' | 'Ditolak') => void;
   onEditRequest?: (updatedReq: LeaveRequest) => void;
   onDeleteRequest?: (requestId: string) => void;
+  onNavigateToSemesterReport?: () => void;
 }
 
 export default function PermitRecapDashboard({
@@ -48,6 +49,7 @@ export default function PermitRecapDashboard({
   onUpdateStatus,
   onEditRequest,
   onDeleteRequest,
+  onNavigateToSemesterReport,
 }: PermitRecapDashboardProps) {
   const [activeTab, setActiveTab] = useState<'today' | 'monthly_summary' | 'department_stats'>('today');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -435,6 +437,18 @@ export default function PermitRecapDashboard({
                 <span>+ Pulang Awal</span>
               </button>
             </div>
+          )}
+
+          {onNavigateToSemesterReport && (
+            <button
+              type="button"
+              onClick={onNavigateToSemesterReport}
+              className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+              title="Buka Laporan Penilaian Kinerja Kehadiran Semester (Format SMK Texmaco)"
+            >
+              <FileText className="w-3.5 h-3.5 text-purple-600" />
+              <span>Laporan Semester</span>
+            </button>
           )}
 
           <button

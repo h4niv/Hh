@@ -45,6 +45,7 @@ import PermitRecapDashboard from './components/PermitRecapDashboard';
 import FingerprintModal from './components/FingerprintModal';
 import AndroidAppModal from './components/AndroidAppModal';
 import LiveFingerprintToast from './components/LiveFingerprintToast';
+import SemesterPerformanceReport from './components/SemesterPerformanceReport';
 import { LoginPage } from './components/LoginPage';
 import { useFingerprintLiveStream } from './hooks/useFingerprintLiveStream';
 import {
@@ -70,10 +71,33 @@ export default function App() {
     const saved = localStorage.getItem('absensi_employees');
     const savedOffice = localStorage.getItem('absensi_office_config');
     const cfg: OfficeConfig = savedOffice ? JSON.parse(savedOffice) : DEFAULT_OFFICE_CONFIG;
-    const emps: Employee[] = saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
-    return emps.map(emp => {
+    
+    const initialMap = new Map(INITIAL_EMPLOYEES.map(e => [e.id, e]));
+
+    let emps: Employee[] = INITIAL_EMPLOYEES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Employee[];
+        const existingIds = new Set(parsed.map(e => e.id));
+        const missing = INITIAL_EMPLOYEES.filter(e => !existingIds.has(e.id));
+        emps = [...parsed, ...missing];
+      } catch {
+        emps = INITIAL_EMPLOYEES;
+      }
+    }
+
+    const updated = emps.map(emp => {
+      const initial = initialMap.get(emp.id);
+      const category: 'GTY' | 'GTT' | 'KTY' | 'KTT' | 'PTT' = 
+        emp.employmentCategory || 
+        initial?.employmentCategory || 
+        (emp.role?.toLowerCase().includes('guru') || emp.department?.toLowerCase().includes('pendidik') ? 'GTY' : 'KTY');
+
       return {
         ...emp,
+        role: initial?.role && (emp.role === 'Head of IT & System Architect' || emp.role === 'Digital Marketing Lead') ? initial.role : emp.role,
+        department: initial?.department && (emp.department === 'Teknologi & Informasi' || emp.department === 'Pemasaran & Bisnis') ? initial.department : emp.department,
+        employmentCategory: category,
         shift: {
           ...emp.shift,
           startTime: cfg.workStartTime || '08:30',
@@ -83,6 +107,9 @@ export default function App() {
         }
       };
     });
+
+    localStorage.setItem('absensi_employees', JSON.stringify(updated));
+    return updated;
   });
 
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => {
@@ -148,7 +175,7 @@ export default function App() {
     return emps[0]?.id || 'emp-1';
   });
 
-  const [activeTab, setActiveTab] = useState<'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan'>('presensi');
+  const [activeTab, setActiveTab] = useState<'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja'>('presensi');
   const [isAddEmployeeModalDirectOpen, setIsAddEmployeeModalDirectOpen] = useState<boolean>(false);
   const [leaveModalInitialType, setLeaveModalInitialType] = useState<LeaveType | null>(null);
   const [isLeaveModalAutoOpen, setIsLeaveModalAutoOpen] = useState<boolean>(false);
@@ -1085,6 +1112,40 @@ export default function App() {
     });
   };
 
+  // Update TMT (Terhitung Mulai Tanggal) for Employee
+  const handleUpdateEmployeeTmt = (empId: string, newTmt: string) => {
+    setEmployees((prev) => {
+      const updated = prev.map((emp) => {
+        if (emp.id === empId) {
+          const updatedEmp = { ...emp, tmt: newTmt };
+          syncEmployeeToFirestore(updatedEmp);
+          return updatedEmp;
+        }
+        return emp;
+      });
+      localStorage.setItem('absensi_employees', JSON.stringify(updated));
+      return updated;
+    });
+    showToast(`TMT karyawan berhasil diperbarui menjadi: ${newTmt}`, 'success');
+  };
+
+  // Update Status Kepegawaian (GTY / KTY / GTT / PTT)
+  const handleUpdateEmployeeCategory = (empId: string, category: 'GTY' | 'KTY' | 'GTT' | 'PTT') => {
+    setEmployees((prev) => {
+      const updated = prev.map((emp) => {
+        if (emp.id === empId) {
+          const updatedEmp = { ...emp, employmentCategory: category };
+          syncEmployeeToFirestore(updatedEmp);
+          return updatedEmp;
+        }
+        return emp;
+      });
+      localStorage.setItem('absensi_employees', JSON.stringify(updated));
+      return updated;
+    });
+    showToast(`Status kepegawaian berhasil diubah menjadi: ${category}`, 'success');
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('absensi_auth_logged_emp_id');
     setIsAuthenticated(false);
@@ -1239,6 +1300,7 @@ export default function App() {
               onUpdateStatus={handleUpdateLeaveStatus}
               onEditRequest={handleEditLeaveRequest}
               onDeleteRequest={handleDeleteLeaveRequest}
+              onNavigateToSemesterReport={() => setActiveTab('kinerja')}
             />
 
             {/* Two Column Section: Realtime Attendance Feed + Quick Company Info */}
@@ -1400,6 +1462,7 @@ export default function App() {
               onDeleteAttendanceRecord={handleDeleteAttendanceRecord}
               onDeleteMultipleAttendanceRecords={handleDeleteMultipleAttendanceRecords}
               onOpenFingerprintModal={() => setIsFingerprintModalOpen(true)}
+              onNavigateToSemesterReport={() => setActiveTab('kinerja')}
             />
           </div>
         )}
@@ -1444,6 +1507,21 @@ export default function App() {
               onImportEmployees={handleImportEmployees}
               isAddModalOpenInitially={isAddEmployeeModalDirectOpen}
               onCloseAddModalInitially={() => setIsAddEmployeeModalDirectOpen(false)}
+            />
+          </div>
+        )}
+
+        {/* Tab 5: Laporan Penilaian Kinerja Kehadiran Semester (Format SMK Texmaco Semarang) */}
+        {activeTab === 'kinerja' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <SemesterPerformanceReport
+              employees={employees}
+              attendanceRecords={attendanceRecords}
+              leaveRequests={leaveRequests}
+              officeConfig={officeConfig}
+              currentEmployee={currentEmployee}
+              onUpdateEmployeeTmt={handleUpdateEmployeeTmt}
+              onUpdateEmployeeCategory={handleUpdateEmployeeCategory}
             />
           </div>
         )}

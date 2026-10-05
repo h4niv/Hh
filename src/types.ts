@@ -42,6 +42,8 @@ export interface Employee {
   avatarUrl: string;
   shift: ShiftInfo;
   remainingLeaveQuota: number;
+  tmt?: string; // Terhitung Mulai Tanggal (TMT), e.g. "20 Juli 1998" or "1998-07-20"
+  employmentCategory?: 'GTY' | 'GTT' | 'KTY' | 'KTT' | 'PTT'; // GTY (Guru Tetap), GTT (Guru Tidak Tetap), KTY (Karyawan Tetap), KTT (Karyawan Tidak Tetap)
   fingerprintPin?: string; // No PIN/ID pendaftaran pada mesin sidik jari Solution
   password?: string; // Password / PIN akun login (default: 123456 atau NIK)
   loginPin?: string; // 4-6 digit quick PIN

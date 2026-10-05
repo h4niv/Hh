@@ -96,6 +96,7 @@ export default function EmployeeManagement({
   const [workEndTime, setWorkEndTime] = useState(officeConfig?.workEndTime || '17:30');
   const [lateTolerance, setLateTolerance] = useState(officeConfig?.lateToleranceMinutes || 15);
   const [leaveQuota, setLeaveQuota] = useState(12);
+  const [tmt, setTmt] = useState('');
 
   // Filters
   const [selectedRole, setSelectedRole] = useState<'all' | 'superadmin' | 'admin' | 'karyawan'>('all');
@@ -115,6 +116,7 @@ export default function EmployeeManagement({
     setDepartment(departments[0] || 'Teknologi & Informasi');
     setCustomDepartment('');
     setRole('');
+    setTmt('14 Juli 2020');
     setSystemRole('karyawan');
     setAvatarUrl(PRESET_AVATARS[nextNum % PRESET_AVATARS.length]);
     setCustomAvatarUrl('');
@@ -134,6 +136,7 @@ export default function EmployeeManagement({
     setNik(emp.nik);
     setEmail(emp.email);
     setPhone(emp.phone);
+    setTmt(emp.tmt || '');
     if (departments.includes(emp.department)) {
       setDepartment(emp.department);
       setCustomDepartment('');
@@ -265,6 +268,7 @@ export default function EmployeeManagement({
         avatarUrl: finalAvatar,
         shift: finalShift,
         remainingLeaveQuota: Number(leaveQuota),
+        tmt: tmt.trim() || editingEmployee.tmt || undefined,
       });
     } else {
       onAddEmployee({
@@ -278,29 +282,34 @@ export default function EmployeeManagement({
         avatarUrl: finalAvatar,
         shift: finalShift,
         remainingLeaveQuota: Number(leaveQuota),
+        tmt: tmt.trim() || undefined,
       });
     }
 
     handleCloseModal();
   };
 
-  // Filtered employees
+  // Filtered employees (sorted by NIK ascending)
   const filteredEmployees = useMemo(() => {
-    return employees.filter((emp) => {
-      const matchSearch =
-        emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        emp.nik.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        emp.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        emp.email.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchDept =
-        selectedDepartment === 'all' || emp.department === selectedDepartment;
+    return employees
+      .filter((emp) => {
+        const matchSearch =
+          emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          emp.nik.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          emp.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          emp.email.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        const matchDept =
+          selectedDepartment === 'all' || emp.department === selectedDepartment;
 
-      const matchRole =
-        selectedRole === 'all' || emp.systemRole === selectedRole;
+        const matchRole =
+          selectedRole === 'all' || emp.systemRole === selectedRole;
 
-      return matchSearch && matchDept && matchRole;
-    });
+        return matchSearch && matchDept && matchRole;
+      })
+      .sort((a, b) => {
+        return (a.nik || '').localeCompare(b.nik || '', undefined, { numeric: true, sensitivity: 'base' });
+      });
   }, [employees, searchQuery, selectedDepartment, selectedRole]);
 
   // Handle Export all employees to Excel (.xlsx)
@@ -623,6 +632,15 @@ export default function EmployeeManagement({
                           <Phone className="w-3 h-3 text-slate-400" />
                           {emp.phone}
                         </span>
+                        {emp.tmt && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center gap-1 text-slate-600 font-medium">
+                              <Calendar className="w-3 h-3 text-emerald-600" />
+                              TMT: {emp.tmt}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -915,11 +933,25 @@ export default function EmployeeManagement({
                   <input
                     type="text"
                     required
-                    placeholder="Contoh: Frontend Developer"
+                    placeholder="Contoh: Guru Produktif RPL / Staff TU"
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    TMT (Terhitung Mulai Tanggal)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 20 Juli 1998 atau 14 Juli 2008"
+                    value={tmt}
+                    onChange={(e) => setTmt(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Untuk laporan penilaian kinerja semester guru & karyawan</p>
                 </div>
               </div>
 

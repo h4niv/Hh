@@ -56,6 +56,7 @@ interface HistoryTableProps {
   onDeleteAttendanceRecord?: (recordId: string) => void;
   onDeleteMultipleAttendanceRecords?: (recordIds: string[]) => void;
   onOpenFingerprintModal?: () => void;
+  onNavigateToSemesterReport?: () => void;
 }
 
 interface DeleteConfirmState {
@@ -79,6 +80,7 @@ export default function HistoryTable({
   onDeleteAttendanceRecord,
   onDeleteMultipleAttendanceRecords,
   onOpenFingerprintModal,
+  onNavigateToSemesterReport,
 }: HistoryTableProps) {
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
   const isSuperadmin = currentEmployee.systemRole === 'superadmin';
@@ -395,6 +397,19 @@ export default function HistoryTable({
               >
                 <Fingerprint className="w-3.5 h-3.5" />
                 <span>Mesin Solution (IP)</span>
+              </button>
+            )}
+
+            {onNavigateToSemesterReport && (
+              <button
+                type="button"
+                id="btn-semester-texmaco-report"
+                onClick={onNavigateToSemesterReport}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                title="Buka Laporan Penilaian Kinerja Semester Format SMK Texmaco"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
+                <span>Format Semester Texmaco</span>
               </button>
             )}
 

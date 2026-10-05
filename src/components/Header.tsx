@@ -21,7 +21,9 @@ import {
   Cloud,
   RefreshCw,
   Smartphone,
-  LogOut
+  LogOut,
+  Award,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Employee, OfficeConfig } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -30,8 +32,8 @@ interface HeaderProps {
   currentEmployee: Employee;
   employees: Employee[];
   onSelectEmployee: (employee: Employee) => void;
-  activeTab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan';
-  onTabChange: (tab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan') => void;
+  activeTab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja';
+  onTabChange: (tab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja') => void;
   officeConfig: OfficeConfig;
   onOpenOfficeModal: () => void;
   onOpenAddEmployeeModal?: () => void;
@@ -650,6 +652,28 @@ export default function Header({
           >
             <FileText className="w-4 h-4" />
             <span>{!isAdminOrSuper ? 'Pengajuan Izin & Cuti' : 'Persetujuan Izin & Cuti'}</span>
+          </button>
+
+          {/* Laporan Kinerja Semester (Format SMK Texmaco) */}
+          <button
+            type="button"
+            id="nav-tab-kinerja"
+            onClick={() => onTabChange('kinerja')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'kinerja'
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+            <span>Laporan Semester</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+              activeTab === 'kinerja' 
+                ? 'bg-blue-700/60 text-blue-100' 
+                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+            }`}>
+              SMK Texmaco
+            </span>
           </button>
 
           {/* Data Karyawan - Only for Admin & Superadmin */}
