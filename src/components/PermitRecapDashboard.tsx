@@ -23,11 +23,12 @@ import {
   AlertTriangle,
   Search
 } from 'lucide-react';
-import { LeaveRequest, LeaveStatus, Employee, OfficeConfig } from '../types';
+import { LeaveRequest, LeaveStatus, Employee, OfficeConfig, AttendanceRecord } from '../types';
 import { getTodayDateString } from '../utils/geo';
 
 interface PermitRecapDashboardProps {
   requests: LeaveRequest[];
+  attendanceRecords?: AttendanceRecord[];
   employees: Employee[];
   currentEmployee: Employee;
   officeConfig?: OfficeConfig;
@@ -41,6 +42,7 @@ interface PermitRecapDashboardProps {
 
 export default function PermitRecapDashboard({
   requests,
+  attendanceRecords = [],
   employees,
   currentEmployee,
   officeConfig,
@@ -131,14 +133,81 @@ export default function PermitRecapDashboard({
 
   const activeEmpIdSet = useMemo(() => new Set(employees.map(e => e.id)), [employees]);
 
-  // Today's permits (only active employees)
+  // Unify official leave requests with data from Rekapitulasi Kehadiran (attendanceRecords)
+  const combinedRequests = useMemo(() => {
+    const list: LeaveRequest[] = [...requests];
+    const existingLateKeys = new Set(
+      requests.filter(r => r.type === 'Izin Datang Terlambat').map(r => `${r.employeeId}_${r.startDate}`)
+    );
+    const existingEarlyKeys = new Set(
+      requests.filter(r => r.type === 'Izin Pulang Awal').map(r => `${r.employeeId}_${r.startDate}`)
+    );
+
+    if (attendanceRecords && attendanceRecords.length > 0) {
+      attendanceRecords.forEach(rec => {
+        if (!activeEmpIdSet.has(rec.employeeId)) return;
+
+        // Late from attendance records
+        if (rec.status === 'Terlambat' || (rec.lateMinutes && rec.lateMinutes > 0) || rec.hasLatePermit) {
+          const key = `${rec.employeeId}_${rec.date}`;
+          if (!existingLateKeys.has(key)) {
+            existingLateKeys.add(key);
+            list.push({
+              id: `syn-att-late-${rec.id || key}`,
+              employeeId: rec.employeeId,
+              employeeName: rec.employeeName,
+              employeeNik: rec.employeeNik,
+              department: rec.department || '',
+              type: 'Izin Datang Terlambat',
+              startDate: rec.date,
+              endDate: rec.date,
+              totalDays: 1,
+              estimatedArrivalTime: rec.checkInTime || '08:45',
+              lateMinutes: rec.lateMinutes || 15,
+              reason: rec.notes || 'Terlambat presensi hadir',
+              status: 'Disetujui',
+              appliedAt: rec.date,
+            });
+          }
+        }
+
+        // Early checkout from attendance records
+        if ((rec.earlyMinutes && rec.earlyMinutes > 0) || rec.hasEarlyPermit) {
+          const key = `${rec.employeeId}_${rec.date}`;
+          if (!existingEarlyKeys.has(key)) {
+            existingEarlyKeys.add(key);
+            list.push({
+              id: `syn-att-early-${rec.id || key}`,
+              employeeId: rec.employeeId,
+              employeeName: rec.employeeName,
+              employeeNik: rec.employeeNik,
+              department: rec.department || '',
+              type: 'Izin Pulang Awal',
+              startDate: rec.date,
+              endDate: rec.date,
+              totalDays: 1,
+              estimatedDepartureTime: rec.checkOutTime || '16:00',
+              earlyDepartureMinutes: rec.earlyMinutes || 30,
+              reason: rec.notes || 'Pulang lebih awal',
+              status: 'Disetujui',
+              appliedAt: rec.date,
+            });
+          }
+        }
+      });
+    }
+
+    return list;
+  }, [requests, attendanceRecords, activeEmpIdSet]);
+
+  // Today's permits (only active employees, combined from permits & rekapitulasi kehadiran)
   const todayLateRequests = useMemo(() => {
-    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat' && r.startDate <= todayStr && r.endDate >= todayStr);
-  }, [requests, activeEmpIdSet, todayStr]);
+    return combinedRequests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat' && r.startDate <= todayStr && r.endDate >= todayStr);
+  }, [combinedRequests, activeEmpIdSet, todayStr]);
 
   const todayEarlyRequests = useMemo(() => {
-    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Pulang Awal' && r.startDate <= todayStr && r.endDate >= todayStr);
-  }, [requests, activeEmpIdSet, todayStr]);
+    return combinedRequests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Pulang Awal' && r.startDate <= todayStr && r.endDate >= todayStr);
+  }, [combinedRequests, activeEmpIdSet, todayStr]);
 
   const todayTotalLateMinutes = useMemo(() => {
     return todayLateRequests.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
@@ -148,14 +217,49 @@ export default function PermitRecapDashboard({
     return todayEarlyRequests.reduce((sum, r) => sum + (r.earlyDepartureMinutes || 0), 0);
   }, [todayEarlyRequests]);
 
-  // Selected Month permits (All active employees)
+  // Periodic date range: 26th previous month to 25th current month
+  // E.g. For "2026-07" (Bulan Juli) -> 26 Juni 2026 s.d. 25 Juli 2026
+  const monthPeriodRange = useMemo(() => {
+    const parts = selectedMonth.split('-');
+    const yr = parseInt(parts[0]) || 2026;
+    const m = parseInt(parts[1]) || 7;
+    let pY = yr;
+    let pM = m - 1;
+    if (pM === 0) {
+      pM = 12;
+      pY = yr - 1;
+    }
+    const start = `${pY}-${String(pM).padStart(2, '0')}-26`;
+    const end = `${yr}-${String(m).padStart(2, '0')}-25`;
+    const monthNames = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return {
+      start,
+      end,
+      label: `26 ${monthNames[pM]} ${pY} s.d. 25 ${monthNames[m]} ${yr}`,
+      shortLabel: `26/${String(pM).padStart(2, '0')} - 25/${String(m).padStart(2, '0')}/${yr}`,
+      monthName: monthNames[m],
+      year: yr
+    };
+  }, [selectedMonth]);
+
+  // Selected Month permits (All active employees, range: 26 prev month s.d. 25 current month, combined from permits & rekapitulasi kehadiran)
   const monthlyLateRequests = useMemo(() => {
-    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat' && r.startDate.startsWith(selectedMonth));
-  }, [requests, activeEmpIdSet, selectedMonth]);
+    return combinedRequests.filter(r => 
+      activeEmpIdSet.has(r.employeeId) && 
+      r.type === 'Izin Datang Terlambat' && 
+      r.startDate >= monthPeriodRange.start && 
+      r.startDate <= monthPeriodRange.end
+    );
+  }, [combinedRequests, activeEmpIdSet, monthPeriodRange]);
 
   const monthlyEarlyRequests = useMemo(() => {
-    return requests.filter(r => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Pulang Awal' && r.startDate.startsWith(selectedMonth));
-  }, [requests, activeEmpIdSet, selectedMonth]);
+    return combinedRequests.filter(r => 
+      activeEmpIdSet.has(r.employeeId) && 
+      r.type === 'Izin Pulang Awal' && 
+      r.startDate >= monthPeriodRange.start && 
+      r.startDate <= monthPeriodRange.end
+    );
+  }, [combinedRequests, activeEmpIdSet, monthPeriodRange]);
 
   const monthlyTotalLateMinutes = useMemo(() => {
     return monthlyLateRequests.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
@@ -186,7 +290,7 @@ export default function PermitRecapDashboard({
 
   // Filtered today list
   const filteredTodayRequests = useMemo(() => {
-    return requests.filter(r => {
+    return combinedRequests.filter(r => {
       const isToday = r.startDate <= todayStr && r.endDate >= todayStr;
       if (!isToday) return false;
       const isTargetType = r.type === 'Izin Datang Terlambat' || r.type === 'Izin Pulang Awal';
@@ -198,7 +302,7 @@ export default function PermitRecapDashboard({
 
       return true;
     });
-  }, [requests, todayStr, filterType, selectedDept]);
+  }, [combinedRequests, todayStr, filterType, selectedDept]);
 
   // Per-employee breakdown calculation for the selected month
   const employeeMonthlySummary = useMemo(() => {
@@ -408,13 +512,18 @@ export default function PermitRecapDashboard({
 
         {/* Action Buttons & Period Selector */}
         <div className="flex items-center gap-2 flex-wrap">
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="text-xs font-mono font-semibold px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            title="Pilih Bulan Rekapitulasi"
-          />
+          <div className="flex flex-col items-end">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="text-xs font-mono font-semibold px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              title="Pilih Bulan Rekapitulasi (Periode 26 s.d. 25)"
+            />
+            <span className="text-[10px] text-slate-500 font-medium mt-0.5">
+              Periode: {monthPeriodRange.label}
+            </span>
+          </div>
 
           {onOpenLeaveModal && (
             <div className="flex items-center gap-1">
@@ -521,7 +630,7 @@ export default function PermitRecapDashboard({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-blue-600" />
-                Akumulasi Bulan Ini ({selectedMonth})
+                Akumulasi Bulan Ini ({monthPeriodRange.shortLabel})
               </span>
             </div>
             <div className="mt-2.5">
@@ -696,7 +805,7 @@ export default function PermitRecapDashboard({
                     Rekapitulasi Filter Izin Datang Terlambat
                   </span>
                   <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-200/80 text-amber-900 border border-amber-300">
-                    Periode: {selectedMonth}
+                    Periode: {monthPeriodRange.label}
                   </span>
                 </div>
                 <p className="text-[11px] text-amber-800 mt-0.5">

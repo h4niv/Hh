@@ -65,7 +65,7 @@ export default function SemesterPerformanceReport({
   currentEmployee,
   onUpdateEmployeeTmt,
 }: SemesterPerformanceReportProps) {
-  const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
+  const isAdminOrSuper = currentEmployee?.systemRole === 'admin' || currentEmployee?.systemRole === 'superadmin';
 
   // Dynamic date helpers
   const todayObj = new Date();
@@ -118,34 +118,41 @@ export default function SemesterPerformanceReport({
     }
   };
 
-  // Define months for semester
+  // Define months for semester with custom 26th - 25th monthly payroll/attendance periods
   const semesterInfo = useMemo(() => {
+    const getMonthRange = (yr: number, m: number) => {
+      let pY = yr;
+      let pM = m - 1;
+      if (pM === 0) {
+        pM = 12;
+        pY = yr - 1;
+      }
+      const start = `${pY}-${String(pM).padStart(2, '0')}-26`;
+      const end = `${yr}-${String(m).padStart(2, '0')}-25`;
+      return { start, end };
+    };
+
     if (semesterType === 'ganjil') {
+      const year = selectedCalendarYear;
+      const months = [7, 8, 9, 10, 11, 12]; // Juli to Des
+      const monthRanges = months.map(m => getMonthRange(year, m));
       return {
-        label: `JULI S.D. DESEMBER ${selectedCalendarYear}`,
-        monthKeys: [
-          `${selectedCalendarYear}-07`,
-          `${selectedCalendarYear}-08`,
-          `${selectedCalendarYear}-09`,
-          `${selectedCalendarYear}-10`,
-          `${selectedCalendarYear}-11`,
-          `${selectedCalendarYear}-12`,
-        ],
+        label: `26 JUNI ${year} S.D. 25 DESEMBER ${year} (Periode 26 s.d. 25)`,
+        monthRanges,
+        semesterStartDate: monthRanges[0].start,
+        semesterEndDate: monthRanges[5].end,
         monthLabels: ['JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'],
         shortMonthLabels: ['JUL', 'AGS', 'SEP', 'OKT', 'NOV', 'DES'],
       };
     } else {
-      const year = selectedCalendarYear + 1; // e.g. 2027 for TP 2026/2027
+      const year = selectedCalendarYear + 1; // e.g. 2027
+      const months = [1, 2, 3, 4, 5, 6]; // Jan to Jun
+      const monthRanges = months.map(m => getMonthRange(year, m));
       return {
-        label: `JANUARI S.D. JUNI ${year}`,
-        monthKeys: [
-          `${year}-01`,
-          `${year}-02`,
-          `${year}-03`,
-          `${year}-04`,
-          `${year}-05`,
-          `${year}-06`,
-        ],
+        label: `26 DESEMBER ${selectedCalendarYear} S.D. 25 JUNI ${year} (Periode 26 s.d. 25)`,
+        monthRanges,
+        semesterStartDate: monthRanges[0].start,
+        semesterEndDate: monthRanges[5].end,
         monthLabels: ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI'],
         shortMonthLabels: ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN'],
       };
@@ -182,6 +189,21 @@ export default function SemesterPerformanceReport({
     }
   };
 
+  const getDatesBetween = (startDate: string, endDate: string): string[] => {
+    const dates: string[] = [];
+    try {
+      const curr = new Date(startDate + 'T00:00:00');
+      const last = new Date(endDate + 'T00:00:00');
+      while (curr <= last) {
+        dates.push(curr.toISOString().split('T')[0]);
+        curr.setDate(curr.getDate() + 1);
+      }
+    } catch {
+      if (startDate) dates.push(startDate);
+    }
+    return dates.length > 0 ? dates : [startDate];
+  };
+
   // Helper to determine exact category: GTY, GTT, KTY, KTT
   const resolveEmployeeCategory = (emp: {
     id?: string;
@@ -190,11 +212,75 @@ export default function SemesterPerformanceReport({
     role?: string;
     department?: string;
   }): 'GTY' | 'GTT' | 'KTY' | 'KTT' => {
+    const deptUpper = (emp.department || '').trim().toUpperCase();
+    const deptLower = (emp.department || '').trim().toLowerCase();
+
+    // 1. Prioritize DEPARTMENT explicitly
+    if (
+      deptUpper === 'GTT' || 
+      deptUpper.startsWith('GTT') || 
+      deptUpper.includes(' GTT') || 
+      deptUpper.includes('/GTT') ||
+      deptUpper.includes('-GTT') ||
+      deptUpper.includes('(GTT)') ||
+      deptLower.includes('guru tidak tetap') ||
+      deptLower.includes('gtt')
+    ) {
+      return 'GTT';
+    }
+
+    if (
+      deptUpper === 'KTT' || 
+      deptUpper.startsWith('KTT') || 
+      deptUpper.includes(' KTT') || 
+      deptUpper.includes('/KTT') ||
+      deptUpper.includes('-KTT') ||
+      deptUpper.includes('(KTT)') ||
+      deptUpper === 'PTT' ||
+      deptLower.includes('karyawan tidak tetap') ||
+      deptLower.includes('ktt') ||
+      deptLower.includes('ptt')
+    ) {
+      return 'KTT';
+    }
+
+    if (
+      deptUpper === 'GTY' || 
+      deptUpper.startsWith('GTY') || 
+      deptUpper.includes(' GTY') || 
+      deptUpper.includes('/GTY') ||
+      deptUpper.includes('-GTY') ||
+      deptUpper.includes('(GTY)') ||
+      deptLower.includes('guru tetap') ||
+      deptLower.includes('gty')
+    ) {
+      return 'GTY';
+    }
+
+    if (
+      deptUpper === 'KTY' || 
+      deptUpper.startsWith('KTY') || 
+      deptUpper.includes(' KTY') || 
+      deptUpper.includes('/KTY') ||
+      deptUpper.includes('-KTY') ||
+      deptUpper.includes('(KTY)') ||
+      deptLower.includes('karyawan tetap') ||
+      deptLower.includes('kty')
+    ) {
+      return 'KTY';
+    }
+
+    // 2. Check role and name text for explicit GTT / KTT before falling back to GTY
+    const text = `${emp.role || ''} ${emp.name || ''}`.toLowerCase();
+    if (text.includes('gtt') || text.includes('guru tidak tetap') || text.includes('honorer guru')) return 'GTT';
+    if (text.includes('ktt') || text.includes('karyawan tidak tetap') || text.includes('kontrak') || text.includes('honorer')) return 'KTT';
+
+    // 3. Next check employmentCategory
     const cat = emp.employmentCategory?.toUpperCase()?.trim();
-    if (cat === 'GTY') return 'GTY';
     if (cat === 'GTT') return 'GTT';
-    if (cat === 'KTY') return 'KTY';
     if (cat === 'KTT' || cat === 'PTT') return 'KTT';
+    if (cat === 'GTY') return 'GTY';
+    if (cat === 'KTY') return 'KTY';
     
     // Explicit known mock employee IDs fallback
     if (emp.id === 'emp-1' || emp.id === 'emp-3' || emp.id === 'emp-6') return 'GTY';
@@ -202,10 +288,7 @@ export default function SemesterPerformanceReport({
     if (emp.id === 'emp-2' || emp.id === 'emp-4') return 'KTY';
     if (emp.id === 'emp-5') return 'KTT';
 
-    // Keyword inferences
-    const text = `${emp.role || ''} ${emp.department || ''} ${emp.name || ''}`.toLowerCase();
-    if (text.includes('gtt') || text.includes('guru tidak tetap') || text.includes('honorer guru')) return 'GTT';
-    if (text.includes('ktt') || text.includes('karyawan tidak tetap') || text.includes('kontrak') || text.includes('honorer')) return 'KTT';
+    // 4. Fallback generic keywords
     if (text.includes('guru') || text.includes('pengajar') || text.includes('pendidik')) return 'GTY';
     return 'KTY';
   };
@@ -232,19 +315,25 @@ export default function SemesterPerformanceReport({
     employeeEventsDB,
     columnTotalsEventsDB
   } = useMemo(() => {
-    const empList = employees.filter(e => {
-      if (!isAdminOrSuper && e.id !== currentEmployee.id) return false;
-      if (selectedDepartment !== 'Semua' && e.department !== selectedDepartment) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchName = e.name.toLowerCase().includes(q);
-        const matchNik = e.nik.toLowerCase().includes(q);
-        const matchTmt = (e.tmt || '').toLowerCase().includes(q);
-        const matchRole = (e.role || '').toLowerCase().includes(q);
-        if (!matchName && !matchNik && !matchTmt && !matchRole) return false;
-      }
-      return true;
-    });
+    try {
+      const safeEmps = employees || [];
+      const safeAttendance = attendanceRecords || [];
+      const safeLeaves = leaveRequests || [];
+      const safeCurrentEmp = currentEmployee || { id: '', systemRole: 'karyawan' };
+
+      const empList = safeEmps.filter(e => {
+        if (!isAdminOrSuper && e.id !== safeCurrentEmp.id) return false;
+        if (selectedDepartment !== 'Semua' && e.department !== selectedDepartment) return false;
+        if (searchQuery && searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          const matchName = (e.name || '').toLowerCase().includes(q);
+          const matchNik = (e.nik || '').toLowerCase().includes(q);
+          const matchTmt = (e.tmt || '').toLowerCase().includes(q);
+          const matchRole = (e.role || '').toLowerCase().includes(q);
+          if (!matchName && !matchNik && !matchTmt && !matchRole) return false;
+        }
+        return true;
+      });
 
     // Detailed incident database per employee
     const eventsDB: Record<string, {
@@ -289,7 +378,7 @@ export default function SemesterPerformanceReport({
       };
 
       // 1. Calculate Monthly Tardiness Minutes & build detailed events
-      const monthlyMinutes = semesterInfo.monthKeys.map((mKey, mIdx) => {
+      const monthlyMinutes = semesterInfo.monthRanges.map((range, mIdx) => {
         const eventsForMonth: DetailEventItem[] = [];
         const dayRecordMap = new Map<string, {
           lateMins: number;
@@ -301,7 +390,7 @@ export default function SemesterPerformanceReport({
 
         // Check attendance records
         attendanceRecords.forEach(rec => {
-          if (rec.employeeId === emp.id && rec.date.startsWith(mKey)) {
+          if (rec.employeeId === emp.id && rec.date >= range.start && rec.date <= range.end) {
             let late = rec.lateMinutes || 0;
             if (late <= 0 && rec.status === 'Terlambat') {
               if (rec.checkInTime) {
@@ -327,43 +416,6 @@ export default function SemesterPerformanceReport({
           }
         });
 
-        // Check approved leave requests for Izin Datang Terlambat
-        leaveRequests.forEach(req => {
-          if (req.employeeId === emp.id && req.status === 'Disetujui' && req.startDate.startsWith(mKey)) {
-            if (req.type === 'Izin Datang Terlambat') {
-              const reqLate = req.lateMinutes || 30;
-              const existing = dayRecordMap.get(req.startDate);
-              if (existing) {
-                existing.lateMins = Math.max(existing.lateMins, reqLate);
-                existing.hasPermit = true;
-                if (req.notes || req.reason) existing.notes = req.reason || req.notes;
-              } else {
-                dayRecordMap.set(req.startDate, {
-                  lateMins: reqLate,
-                  checkIn: req.estimatedArrivalTime || '-',
-                  status: 'Izin Terlambat Disetujui',
-                  hasPermit: true,
-                  notes: req.reason || 'Izin datang terlambat resmi disetujui',
-                });
-              }
-            } else if (calculationMode === 'late_and_early' && req.type === 'Izin Pulang Awal') {
-              const reqEarly = req.earlyDepartureMinutes || 30;
-              const existing = dayRecordMap.get(req.startDate);
-              if (existing) {
-                existing.lateMins += reqEarly;
-              } else {
-                dayRecordMap.set(req.startDate, {
-                  lateMins: reqEarly,
-                  checkIn: '-',
-                  status: 'Izin Pulang Awal Disetujui',
-                  hasPermit: true,
-                  notes: req.reason || 'Izin pulang awal',
-                });
-              }
-            }
-          }
-        });
-
         let monthTotal = 0;
         dayRecordMap.forEach((val, dateStr) => {
           monthTotal += val.lateMins;
@@ -375,7 +427,7 @@ export default function SemesterPerformanceReport({
             dayName: getIndonesianDayName(dateStr),
             timeInfo: `Masuk: ${val.checkIn} (Jadwal ${scheduledStartTimeStr})`,
             metricValue: `${val.lateMins} Menit`,
-            categoryLabel: `Keterlambatan Bulan ${semesterInfo.monthLabels[mIdx]}`,
+            categoryLabel: `Keterlambatan Bulan ${semesterInfo.monthLabels[mIdx]} (${semesterInfo.monthRanges[mIdx].start} s.d. ${semesterInfo.monthRanges[mIdx].end})`,
             statusBadge: val.hasPermit ? 'Izin Disetujui' : 'Tanpa Izin Khusus',
             statusColor: val.hasPermit ? 'emerald' : 'amber',
             notes: val.notes || 'Terlambat hadir',
@@ -396,170 +448,176 @@ export default function SemesterPerformanceReport({
 
       const totalMinutes = monthlyMinutes.reduce((sum, v) => sum + v, 0);
 
-      // 2. Calculate TIDAK MASUK (HARI): IJIN, SAKIT, DINAS, ALPA
-      let izinHari = 0;
-      let sakitHari = 0;
-      let dinasHari = 0;
-      let alpaHari = 0;
+      // 2. Calculate TIDAK MASUK (HARI): IJIN, SAKIT, DINAS, ALPA diambil langsung dari Rekapitulasi Kehadiran
+      const izinDates = new Set<string>();
+      const sakitDates = new Set<string>();
+      const dinasDates = new Set<string>();
+      const alpaDates = new Set<string>();
 
-      // Attendance records
+      const izinEventsMap = new Map<string, DetailEventItem>();
+      const sakitEventsMap = new Map<string, DetailEventItem>();
+      const dinasEventsMap = new Map<string, DetailEventItem>();
+      const alpaEventsMap = new Map<string, DetailEventItem>();
+
+      // Attendance records check strictly from Rekapitulasi Kehadiran
       attendanceRecords.forEach(rec => {
         if (rec.employeeId === emp.id) {
-          const inSemester = semesterInfo.monthKeys.some(mKey => rec.date.startsWith(mKey));
+          const inSemester = rec.date >= semesterInfo.semesterStartDate && rec.date <= semesterInfo.semesterEndDate;
           if (inSemester) {
             const dayName = getIndonesianDayName(rec.date);
+            const statusLower = (rec.status || '').toLowerCase().trim();
+            const typeLower = (rec.type || '').toLowerCase().trim();
+            const notesLower = (rec.notes || '').toLowerCase().trim();
 
-            if (rec.status === 'Izin' || rec.status === 'Cuti') {
-              izinHari += 1;
-              const item: DetailEventItem = {
+            // PENTING: Ijin datang terlambat dan ijin pulang awal TIDAK MASUK kedalam hitungan ijin (tidak masuk)
+            const isLatePermit = Boolean(
+              rec.hasLatePermit ||
+              (rec.lateMinutes !== undefined && rec.lateMinutes > 0) ||
+              statusLower === 'izin datang terlambat' ||
+              statusLower.includes('datang terlambat') ||
+              statusLower.includes('izin terlambat') ||
+              typeLower.includes('datang terlambat') ||
+              typeLower.includes('izin terlambat') ||
+              notesLower.includes('izin datang terlambat') ||
+              notesLower.includes('izin terlambat')
+            );
+
+            const isEarlyPermit = Boolean(
+              rec.hasEarlyPermit ||
+              (rec.earlyMinutes !== undefined && rec.earlyMinutes > 0) ||
+              statusLower === 'izin pulang awal' ||
+              statusLower === 'izin pulang cepat' ||
+              statusLower.includes('pulang awal') ||
+              statusLower.includes('pulang cepat') ||
+              typeLower.includes('pulang awal') ||
+              typeLower.includes('pulang cepat') ||
+              notesLower.includes('izin pulang awal') ||
+              notesLower.includes('izin pulang cepat') ||
+              notesLower.includes('pulang awal') ||
+              notesLower.includes('pulang mendahului')
+            );
+
+            // Check non-attendance categories (HANYA jika BUKAN izin jam kerja seperti terlambat / pulang awal)
+            if (!isLatePermit && !isEarlyPermit && (statusLower === 'izin' || statusLower === 'cuti' || statusLower.includes('cuti') || (statusLower.includes('izin') && !statusLower.includes('terlambat') && !statusLower.includes('pulang')))) {
+              izinDates.add(rec.date);
+              izinEventsMap.set(rec.date, {
                 employeeName: emp.name,
                 nik: emp.nik,
                 date: rec.date,
                 dayName,
                 metricValue: '1 Hari',
-                categoryLabel: rec.status === 'Cuti' ? 'Cuti Tahunan' : 'Izin Pribadi',
-                statusBadge: 'Tercatat Izin',
+                categoryLabel: statusLower.includes('cuti') ? 'Cuti' : 'Izin Tidak Masuk',
+                statusBadge: 'Tercatat di Rekap',
                 statusColor: 'blue',
                 notes: rec.notes || 'Izin tidak hadir',
-              };
-              eventsDB[emp.id].izin.push(item);
-              totalsDB.izin.push(item);
-            } else if (rec.status === 'Sakit') {
-              sakitHari += 1;
-              const item: DetailEventItem = {
+              });
+            } else if (statusLower.includes('sakit')) {
+              sakitDates.add(rec.date);
+              sakitEventsMap.set(rec.date, {
                 employeeName: emp.name,
                 nik: emp.nik,
                 date: rec.date,
                 dayName,
                 metricValue: '1 Hari',
                 categoryLabel: 'Sakit',
-                statusBadge: 'Surat Dokter / Sakit',
+                statusBadge: 'Surat Sakit',
                 statusColor: 'emerald',
                 notes: rec.notes || 'Keterangan sakit',
-              };
-              eventsDB[emp.id].sakit.push(item);
-              totalsDB.sakit.push(item);
-            } else if (rec.status === 'Alpha') {
-              alpaHari += 1;
-              const item: DetailEventItem = {
+              });
+            } else if (statusLower.includes('alpa') || statusLower.includes('alpha')) {
+              alpaDates.add(rec.date);
+              alpaEventsMap.set(rec.date, {
                 employeeName: emp.name,
                 nik: emp.nik,
                 date: rec.date,
                 dayName,
                 metricValue: '1 Hari',
                 categoryLabel: 'Alpa / Tanpa Keterangan',
-                statusBadge: 'Tidak Hadir',
+                statusBadge: 'Tanpa Keterangan',
                 statusColor: 'rose',
-                notes: rec.notes || 'Tidak hadir tanpa pemberitahuan atau surat izin',
-              };
-              eventsDB[emp.id].alpa.push(item);
-              totalsDB.alpa.push(item);
+                notes: rec.notes || 'Tidak hadir tanpa pemberitahuan',
+              });
             }
 
-            if (rec.type === 'Dinas Luar') {
-              dinasHari += 1;
-              const item: DetailEventItem = {
+            if (typeLower.includes('dinas') || statusLower.includes('dinas')) {
+              dinasDates.add(rec.date);
+              dinasEventsMap.set(rec.date, {
                 employeeName: emp.name,
                 nik: emp.nik,
                 date: rec.date,
                 dayName,
                 metricValue: '1 Hari',
                 categoryLabel: 'Dinas Luar',
-                statusBadge: 'Tugas Dinas Disetujui',
+                statusBadge: 'Tugas Dinas',
                 statusColor: 'indigo',
-                notes: rec.notes || 'Perjalanan dinas / tugas sekolah',
-              };
-              eventsDB[emp.id].dinas.push(item);
-              totalsDB.dinas.push(item);
+                notes: rec.notes || 'Perjalanan dinas luar',
+              });
             }
           }
         }
       });
 
-      // Leave requests
-      leaveRequests.forEach(req => {
-        if (req.employeeId === emp.id && req.status === 'Disetujui') {
-          const inSemester = semesterInfo.monthKeys.some(mKey => req.startDate.startsWith(mKey));
-          if (inSemester) {
-            const dayName = getIndonesianDayName(req.startDate);
-            const count = req.totalDays || 1;
+      const izinHari = izinDates.size;
+      const sakitHari = sakitDates.size;
+      const dinasHari = dinasDates.size;
+      const alpaHari = alpaDates.size;
 
-            if (
-              req.type === 'Cuti Tahunan' || 
-              req.type === 'Izin Pribadi' || 
-              req.type === 'Keperluan Mendesak' || 
-              req.type === 'Cuti Melahirkan'
-            ) {
-              izinHari += count;
-              const item: DetailEventItem = {
-                employeeName: emp.name,
-                nik: emp.nik,
-                date: req.endDate && req.endDate !== req.startDate ? `${req.startDate} s.d. ${req.endDate}` : req.startDate,
-                dayName,
-                metricValue: `${count} Hari`,
-                categoryLabel: req.type,
-                statusBadge: 'Permohonan Disetujui',
-                statusColor: 'blue',
-                notes: req.reason || 'Izin resmi disetujui pimpinan',
-              };
-              eventsDB[emp.id].izin.push(item);
-              totalsDB.izin.push(item);
-            } else if (req.type === 'Sakit') {
-              sakitHari += count;
-              const item: DetailEventItem = {
-                employeeName: emp.name,
-                nik: emp.nik,
-                date: req.endDate && req.endDate !== req.startDate ? `${req.startDate} s.d. ${req.endDate}` : req.startDate,
-                dayName,
-                metricValue: `${count} Hari`,
-                categoryLabel: 'Izin Sakit',
-                statusBadge: 'Surat Dokter Terverifikasi',
-                statusColor: 'emerald',
-                notes: req.reason || 'Sakit dalam masa pemulihan',
-              };
-              eventsDB[emp.id].sakit.push(item);
-              totalsDB.sakit.push(item);
-            } else if (req.type === 'Izin Dinas Luar') {
-              dinasHari += count;
-              const item: DetailEventItem = {
-                employeeName: emp.name,
-                nik: emp.nik,
-                date: req.endDate && req.endDate !== req.startDate ? `${req.startDate} s.d. ${req.endDate}` : req.startDate,
-                dayName,
-                metricValue: `${count} Hari`,
-                categoryLabel: 'Dinas Luar',
-                statusBadge: 'Surat Tugas Resmi',
-                statusColor: 'indigo',
-                notes: req.reason || 'Penugasan dinas luar instansi',
-              };
-              eventsDB[emp.id].dinas.push(item);
-              totalsDB.dinas.push(item);
-            }
-          }
-        }
+      izinEventsMap.forEach(item => {
+        eventsDB[emp.id].izin.push(item);
+        totalsDB.izin.push(item);
+      });
+      sakitEventsMap.forEach(item => {
+        eventsDB[emp.id].sakit.push(item);
+        totalsDB.sakit.push(item);
+      });
+      dinasEventsMap.forEach(item => {
+        eventsDB[emp.id].dinas.push(item);
+        totalsDB.dinas.push(item);
+      });
+      alpaEventsMap.forEach(item => {
+        eventsDB[emp.id].alpa.push(item);
+        totalsDB.alpa.push(item);
       });
 
-      // 3. Calculate IJIN DATANG TERLAMBAT (JUMLAH & MENIT)
+      // 3. Calculate IJIN DATANG TERLAMBAT (JUMLAH & MENIT) langsung dari Rekapitulasi Kehadiran
       let izinTerlambatCount = 0;
       const lateDayKeys = new Set<string>();
 
       attendanceRecords.forEach(rec => {
         if (rec.employeeId === emp.id) {
-          const inSemester = semesterInfo.monthKeys.some(mKey => rec.date.startsWith(mKey));
-          if (inSemester && (rec.status === 'Terlambat' || (rec.lateMinutes && rec.lateMinutes > 0))) {
+          const inSemester = rec.date >= semesterInfo.semesterStartDate && rec.date <= semesterInfo.semesterEndDate;
+          const statusLower = (rec.status || '').toLowerCase().trim();
+          const typeLower = (rec.type || '').toLowerCase().trim();
+          const notesLower = (rec.notes || '').toLowerCase().trim();
+
+          const isLate = rec.status === 'Terlambat' || 
+                         (rec.lateMinutes && rec.lateMinutes > 0) || 
+                         rec.hasLatePermit ||
+                         statusLower === 'izin datang terlambat' ||
+                         statusLower.includes('datang terlambat') ||
+                         statusLower.includes('izin terlambat') ||
+                         typeLower.includes('datang terlambat') ||
+                         typeLower.includes('izin terlambat') ||
+                         notesLower.includes('izin datang terlambat') ||
+                         notesLower.includes('izin terlambat');
+
+          if (inSemester && isLate) {
             if (!lateDayKeys.has(rec.date)) {
               lateDayKeys.add(rec.date);
+              const lateM = rec.lateMinutes && rec.lateMinutes > 0
+                ? rec.lateMinutes
+                : (rec.checkInTime ? Math.max(15, timeToMinutes(rec.checkInTime) - scheduledStartMinutes) : 15);
               const item: DetailEventItem = {
                 employeeName: emp.name,
                 nik: emp.nik,
                 date: rec.date,
                 dayName: getIndonesianDayName(rec.date),
                 timeInfo: `Datang: ${rec.checkInTime || '-'} (Jadwal: ${scheduledStartTimeStr})`,
-                metricValue: `${rec.lateMinutes || 15} Menit`,
+                metricValue: `${lateM} Menit`,
                 categoryLabel: 'Izin Datang Terlambat',
-                statusBadge: rec.hasLatePermit ? 'Ada Izin Resmi' : 'Terlambat Hadir',
+                statusBadge: rec.hasLatePermit ? 'Ada Izin Khusus' : 'Terlambat Masuk',
                 statusColor: rec.hasLatePermit ? 'emerald' : 'amber',
-                notes: rec.notes || 'Keterlambatan jam masuk',
+                notes: rec.notes || 'Keterlambatan jam masuk kerja',
               };
               eventsDB[emp.id].izinTerlambat.push(item);
               totalsDB.izinTerlambat.push(item);
@@ -567,52 +625,46 @@ export default function SemesterPerformanceReport({
           }
         }
       });
-
-      leaveRequests.forEach(req => {
-        if (req.employeeId === emp.id && req.status === 'Disetujui' && req.type === 'Izin Datang Terlambat') {
-          const inSemester = semesterInfo.monthKeys.some(mKey => req.startDate.startsWith(mKey));
-          if (inSemester && !lateDayKeys.has(req.startDate)) {
-            lateDayKeys.add(req.startDate);
-            const item: DetailEventItem = {
-              employeeName: emp.name,
-              nik: emp.nik,
-              date: req.startDate,
-              dayName: getIndonesianDayName(req.startDate),
-              timeInfo: `Estimasi Hadir: ${req.estimatedArrivalTime || '-'}`,
-              metricValue: `${req.lateMinutes || 30} Menit`,
-              categoryLabel: 'Surat Izin Datang Terlambat',
-              statusBadge: 'Disetujui Pimpinan',
-              statusColor: 'emerald',
-              notes: req.reason || 'Izin datang terlambat disetujui',
-            };
-            eventsDB[emp.id].izinTerlambat.push(item);
-            totalsDB.izinTerlambat.push(item);
-          }
-        }
-      });
-
       izinTerlambatCount = lateDayKeys.size;
       const izinTerlambatMenit = totalMinutes;
 
-      // 4. Calculate IJIN PULANG AWAL (JUMLAH & MENIT)
+      // 4. Calculate IJIN PULANG AWAL (JUMLAH & MENIT) langsung dari Rekapitulasi Kehadiran
       let izinPulangAwalCount = 0;
       let izinPulangAwalMenit = 0;
       const earlyDayKeys = new Set<string>();
 
       attendanceRecords.forEach(rec => {
         if (rec.employeeId === emp.id) {
-          const inSemester = semesterInfo.monthKeys.some(mKey => rec.date.startsWith(mKey));
-          if (inSemester && rec.earlyMinutes && rec.earlyMinutes > 0) {
+          const inSemester = rec.date >= semesterInfo.semesterStartDate && rec.date <= semesterInfo.semesterEndDate;
+          const statusLower = (rec.status || '').toLowerCase().trim();
+          const typeLower = (rec.type || '').toLowerCase().trim();
+          const notesLower = (rec.notes || '').toLowerCase().trim();
+
+          const isEarly = ((rec.earlyMinutes && rec.earlyMinutes > 0) || 
+                          rec.hasEarlyPermit ||
+                          statusLower === 'izin pulang awal' ||
+                          statusLower === 'izin pulang cepat' ||
+                          statusLower.includes('pulang awal') ||
+                          statusLower.includes('pulang cepat') ||
+                          typeLower.includes('pulang awal') ||
+                          typeLower.includes('pulang cepat') ||
+                          notesLower.includes('izin pulang awal') ||
+                          notesLower.includes('izin pulang cepat') ||
+                          notesLower.includes('pulang awal') ||
+                          notesLower.includes('pulang mendahului'));
+
+          if (inSemester && isEarly) {
             if (!earlyDayKeys.has(rec.date)) {
               earlyDayKeys.add(rec.date);
-              izinPulangAwalMenit += rec.earlyMinutes;
+              const earlyM = rec.earlyMinutes || 30;
+              izinPulangAwalMenit += earlyM;
               const item: DetailEventItem = {
                 employeeName: emp.name,
                 nik: emp.nik,
                 date: rec.date,
                 dayName: getIndonesianDayName(rec.date),
                 timeInfo: `Pulang Lebih Awal: ${rec.checkOutTime || '-'}`,
-                metricValue: `${rec.earlyMinutes} Menit`,
+                metricValue: `${earlyM} Menit`,
                 categoryLabel: 'Izin Pulang Awal',
                 statusBadge: 'Tercatat Pulang Awal',
                 statusColor: 'indigo',
@@ -621,31 +673,6 @@ export default function SemesterPerformanceReport({
               eventsDB[emp.id].izinPulangAwal.push(item);
               totalsDB.izinPulangAwal.push(item);
             }
-          }
-        }
-      });
-
-      leaveRequests.forEach(req => {
-        if (req.employeeId === emp.id && req.status === 'Disetujui' && req.type === 'Izin Pulang Awal') {
-          const inSemester = semesterInfo.monthKeys.some(mKey => req.startDate.startsWith(mKey));
-          if (inSemester && !earlyDayKeys.has(req.startDate)) {
-            earlyDayKeys.add(req.startDate);
-            const m = req.earlyDepartureMinutes || 30;
-            izinPulangAwalMenit += m;
-            const item: DetailEventItem = {
-              employeeName: emp.name,
-              nik: emp.nik,
-              date: req.startDate,
-              dayName: getIndonesianDayName(req.startDate),
-              timeInfo: `Izin Pulang Jam: ${req.estimatedDepartureTime || '-'}`,
-              metricValue: `${m} Menit`,
-              categoryLabel: 'Izin Pulang Awal',
-              statusBadge: 'Disetujui Pimpinan',
-              statusColor: 'emerald',
-              notes: req.reason || 'Izin mendesak pulang lebih awal',
-            };
-            eventsDB[emp.id].izinPulangAwal.push(item);
-            totalsDB.izinPulangAwal.push(item);
           }
         }
       });
@@ -728,13 +755,30 @@ export default function SemesterPerformanceReport({
       employeeEventsDB: eventsDB,
       columnTotalsEventsDB: totalsDB,
     };
+    } catch (err) {
+      console.error("Error in SemesterPerformanceReport aggregation:", err);
+      return {
+        aggregatedReportRows: [],
+        employeeEventsDB: {},
+        columnTotalsEventsDB: {
+          monthlyLate: {},
+          semesterLate: [],
+          izin: [],
+          sakit: [],
+          dinas: [],
+          alpa: [],
+          izinTerlambat: [],
+          izinPulangAwal: [],
+        }
+      };
+    }
   }, [
     employees, 
     attendanceRecords, 
     leaveRequests, 
     semesterInfo, 
     isAdminOrSuper, 
-    currentEmployee.id, 
+    currentEmployee?.id, 
     selectedDepartment, 
     searchQuery,
     scheduledStartMinutes,
@@ -1337,13 +1381,19 @@ export default function SemesterPerformanceReport({
       <div className="bg-white rounded-2xl border border-slate-300 shadow-sm p-4 sm:p-6 lg:p-8 space-y-6 print:p-0 print:border-none print:shadow-none">
         
         {/* Document Header (Identical to Excel Screenshot) */}
-        <div className="text-center space-y-1 border-b pb-4 border-slate-200">
+        <div className="text-center space-y-1.5 border-b pb-4 border-slate-200">
           <h1 className="text-sm sm:text-base font-extrabold uppercase tracking-wide text-slate-900 font-sans">
             REKAP KEHADIRAN, KETERLAMBATAN DAN PULANG AWAL GURU DAN KARYAWAN {institutionName}
           </h1>
           <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-800 font-sans">
             TAHUN PELAJARAN {academicYear} (PERIODE {semesterInfo.label})
           </h2>
+          <div className="flex items-center justify-center gap-2 pt-1 print:hidden">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              Sumber Data: Rekapitulasi Kehadiran ({attendanceRecords.length} Catatan Presensi)
+            </span>
+          </div>
         </div>
 
         {/* The Master Excel-Style Table (Clean, without status column, ordered: GTY -> GTT -> KTY -> KTT, sorted by NIK) */}
@@ -1434,11 +1484,21 @@ export default function SemesterPerformanceReport({
               {/* Header Row 2 (Sub-columns) */}
               <tr className="border-b border-slate-700 bg-slate-100 text-[10px]">
                 {/* 6 Months + JUMLAH */}
-                {semesterInfo.shortMonthLabels.map((mLabel, idx) => (
-                  <th key={idx} className="border-r border-slate-700 px-2 py-1.5 w-12 text-center font-bold">
-                    {mLabel}
-                  </th>
-                ))}
+                {semesterInfo.shortMonthLabels.map((mLabel, idx) => {
+                  const range = semesterInfo.monthRanges[idx];
+                  return (
+                    <th 
+                      key={idx} 
+                      className="border-r border-slate-700 px-2 py-1.5 min-w-[52px] text-center font-bold"
+                      title={`Bulan ${semesterInfo.monthLabels[idx]}: Periode ${range.start} s.d. ${range.end}`}
+                    >
+                      <div className="font-bold">{mLabel}</div>
+                      <div className="text-[8px] font-normal text-slate-500 font-mono">
+                        26-25
+                      </div>
+                    </th>
+                  );
+                })}
                 <th 
                   onClick={() => handleSortToggle('totalMinutes')}
                   className={`border-r border-slate-700 px-2 py-1.5 w-14 text-center font-bold cursor-pointer select-none transition-colors ${

@@ -142,8 +142,9 @@ export default function HistoryTable({
 
       const matchDept = selectedDept === 'Semua' || r.department === selectedDept;
       const matchEmp = selectedEmployeeId === 'Semua' || r.employeeId === selectedEmployeeId;
+      const isNotRecapOnly = !r.isMonthlyRecapOnly;
 
-      return matchPeriod && matchSearch && matchDept && matchEmp;
+      return matchPeriod && matchSearch && matchDept && matchEmp && isNotRecapOnly;
     });
   }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedEmployeeId, isAdminOrSuper, currentEmployee.id]);
 
@@ -151,10 +152,19 @@ export default function HistoryTable({
   const filteredRecords = useMemo(() => {
     if (selectedStatus === 'Semua') return basePeriodRecords;
     if (selectedStatus === 'Izin Datang Terlambat') {
-      return basePeriodRecords.filter((r) => r.status === 'Terlambat' || (r.lateMinutes && r.lateMinutes > 0) || r.hasLatePermit);
+      return basePeriodRecords.filter((r) => r.status === 'Terlambat' || (r.lateMinutes && r.lateMinutes > 0) || r.hasLatePermit || r.status === 'Izin Datang Terlambat' || (r.notes && r.notes.toLowerCase().includes('terlambat')));
     }
     if (selectedStatus === 'Izin Pulang Awal') {
-      return basePeriodRecords.filter((r) => (r.earlyMinutes && r.earlyMinutes > 0) || r.hasEarlyPermit || (r.notes && r.notes.toLowerCase().includes('pulang awal')));
+      return basePeriodRecords.filter((r) => (r.earlyMinutes && r.earlyMinutes > 0) || r.hasEarlyPermit || r.status === 'Izin Pulang Awal' || (r.notes && (r.notes.toLowerCase().includes('pulang awal') || r.notes.toLowerCase().includes('pulang cepat'))));
+    }
+    if (selectedStatus === 'Izin') {
+      return basePeriodRecords.filter((r) => {
+        if (r.status !== 'Izin') return false;
+        // ijin datang terlambat dan ijin pulang awal tidak masuk kedalam hitungan ijin
+        const isLate = r.hasLatePermit || (r.lateMinutes && r.lateMinutes > 0) || (r.notes && r.notes.toLowerCase().includes('terlambat'));
+        const isEarly = r.hasEarlyPermit || (r.earlyMinutes && r.earlyMinutes > 0) || (r.notes && (r.notes.toLowerCase().includes('pulang awal') || r.notes.toLowerCase().includes('pulang cepat')));
+        return !isLate && !isEarly;
+      });
     }
     return basePeriodRecords.filter((r) => r.status === selectedStatus);
   }, [basePeriodRecords, selectedStatus]);
@@ -166,18 +176,24 @@ export default function HistoryTable({
     const late = basePeriodRecords.filter((r) => r.status === 'Terlambat').length;
     
     // Izin Datang Terlambat: Frekuensi (berapa kali) & Total Menit
-    const latePermitRecords = basePeriodRecords.filter((r) => r.status === 'Terlambat' || (r.lateMinutes && r.lateMinutes > 0) || r.hasLatePermit);
+    const latePermitRecords = basePeriodRecords.filter((r) => r.status === 'Terlambat' || (r.lateMinutes && r.lateMinutes > 0) || r.hasLatePermit || r.status === 'Izin Datang Terlambat' || (r.notes && r.notes.toLowerCase().includes('terlambat')));
     const latePermitCount = latePermitRecords.length;
     const lateTotalMinutes = latePermitRecords.reduce((sum, r) => sum + (r.lateMinutes || 0), 0);
     const lateTotalHours = (lateTotalMinutes / 60).toFixed(1);
 
     // Izin Pulang Awal: Frekuensi (berapa kali) & Total Menit
-    const earlyPermitRecords = basePeriodRecords.filter((r) => (r.earlyMinutes && r.earlyMinutes > 0) || r.hasEarlyPermit || (r.notes && r.notes.toLowerCase().includes('pulang awal')));
+    const earlyPermitRecords = basePeriodRecords.filter((r) => (r.earlyMinutes && r.earlyMinutes > 0) || r.hasEarlyPermit || r.status === 'Izin Pulang Awal' || (r.notes && (r.notes.toLowerCase().includes('pulang awal') || r.notes.toLowerCase().includes('pulang cepat'))));
     const earlyPermitCount = earlyPermitRecords.length;
     const earlyTotalMinutes = earlyPermitRecords.reduce((sum, r) => sum + (r.earlyMinutes || 0), 0);
     const earlyTotalHours = (earlyTotalMinutes / 60).toFixed(1);
 
-    const izin = basePeriodRecords.filter((r) => r.status === 'Izin').length;
+    // Izin: Murni Izin Tidak Masuk (ijin datang terlambat dan ijin pulang awal tidak masuk hitungan ijin)
+    const izin = basePeriodRecords.filter((r) => {
+      if (r.status !== 'Izin') return false;
+      const isLate = r.hasLatePermit || (r.lateMinutes && r.lateMinutes > 0) || (r.notes && r.notes.toLowerCase().includes('terlambat'));
+      const isEarly = r.hasEarlyPermit || (r.earlyMinutes && r.earlyMinutes > 0) || (r.notes && (r.notes.toLowerCase().includes('pulang awal') || r.notes.toLowerCase().includes('pulang cepat')));
+      return !isLate && !isEarly;
+    }).length;
     const cuti = basePeriodRecords.filter((r) => r.status === 'Cuti').length;
     const sakit = basePeriodRecords.filter((r) => r.status === 'Sakit').length;
     const alpha = basePeriodRecords.filter((r) => r.status === 'Alpha').length;

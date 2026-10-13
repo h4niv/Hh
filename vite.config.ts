@@ -318,6 +318,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           runtimeCaching: [
             {
@@ -360,6 +361,10 @@ export default defineConfig(() => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    build: {
+      chunkSizeWarningLimit: 4000,
+      outDir: 'dist',
     },
     server: {
       host: '0.0.0.0',

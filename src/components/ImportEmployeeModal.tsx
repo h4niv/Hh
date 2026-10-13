@@ -317,6 +317,59 @@ export default function ImportEmployeeModal({
 
       const avatar = existing?.avatarUrl || SAMPLE_AVATARS[idx % SAMPLE_AVATARS.length];
 
+      const deptUpper = (row.department || '').trim().toUpperCase();
+      const deptLower = (row.department || '').trim().toLowerCase();
+      let empCategory: 'GTY' | 'GTT' | 'KTY' | 'KTT' | 'PTT' = 'GTY';
+      if (
+        deptUpper === 'GTT' || 
+        deptUpper.startsWith('GTT') || 
+        deptUpper.includes(' GTT') || 
+        deptUpper.includes('/GTT') || 
+        deptUpper.includes('-GTT') || 
+        deptUpper.includes('(GTT)') || 
+        deptLower.includes('guru tidak tetap') || 
+        deptLower.includes('gtt')
+      ) {
+        empCategory = 'GTT';
+      } else if (
+        deptUpper === 'KTT' || 
+        deptUpper.startsWith('KTT') || 
+        deptUpper.includes(' KTT') || 
+        deptUpper.includes('/KTT') || 
+        deptUpper.includes('-KTT') || 
+        deptUpper.includes('(KTT)') || 
+        deptUpper === 'PTT' || 
+        deptLower.includes('karyawan tidak tetap') || 
+        deptLower.includes('ktt') || 
+        deptLower.includes('ptt')
+      ) {
+        empCategory = 'KTT';
+      } else if (
+        deptUpper === 'GTY' || 
+        deptUpper.startsWith('GTY') || 
+        deptUpper.includes(' GTY') || 
+        deptUpper.includes('/GTY') || 
+        deptUpper.includes('-GTY') || 
+        deptUpper.includes('(GTY)') || 
+        deptLower.includes('guru tetap') || 
+        deptLower.includes('gty')
+      ) {
+        empCategory = 'GTY';
+      } else if (
+        deptUpper === 'KTY' || 
+        deptUpper.startsWith('KTY') || 
+        deptUpper.includes(' KTY') || 
+        deptUpper.includes('/KTY') || 
+        deptUpper.includes('-KTY') || 
+        deptUpper.includes('(KTY)') || 
+        deptLower.includes('karyawan tetap') || 
+        deptLower.includes('kty')
+      ) {
+        empCategory = 'KTY';
+      } else {
+        empCategory = (row.role?.toLowerCase().includes('guru') || row.department?.toLowerCase().includes('pendidik')) ? 'GTY' : 'KTY';
+      }
+
       return {
         id: empId,
         nik: row.nik,
@@ -325,6 +378,7 @@ export default function ImportEmployeeModal({
         phone: row.phone,
         department: row.department,
         role: row.role,
+        employmentCategory: existing?.employmentCategory || empCategory,
         systemRole: existing?.systemRole || row.systemRole || 'karyawan',
         avatarUrl: avatar,
         shift,

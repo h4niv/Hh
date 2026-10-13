@@ -46,6 +46,7 @@ import FingerprintModal from './components/FingerprintModal';
 import AndroidAppModal from './components/AndroidAppModal';
 import LiveFingerprintToast from './components/LiveFingerprintToast';
 import SemesterPerformanceReport from './components/SemesterPerformanceReport';
+import MonthlyEmployeeRecap from './components/MonthlyEmployeeRecap';
 import { LoginPage } from './components/LoginPage';
 import { useFingerprintLiveStream } from './hooks/useFingerprintLiveStream';
 import {
@@ -88,10 +89,61 @@ export default function App() {
 
     const updated = emps.map(emp => {
       const initial = initialMap.get(emp.id);
-      const category: 'GTY' | 'GTT' | 'KTY' | 'KTT' | 'PTT' = 
-        emp.employmentCategory || 
-        initial?.employmentCategory || 
-        (emp.role?.toLowerCase().includes('guru') || emp.department?.toLowerCase().includes('pendidik') ? 'GTY' : 'KTY');
+      const deptUpper = (emp.department || '').trim().toUpperCase();
+      const deptLower = (emp.department || '').trim().toLowerCase();
+      let category: 'GTY' | 'GTT' | 'KTY' | 'KTT' | 'PTT';
+
+      if (
+        deptUpper === 'GTT' || 
+        deptUpper.startsWith('GTT') || 
+        deptUpper.includes(' GTT') || 
+        deptUpper.includes('/GTT') || 
+        deptUpper.includes('-GTT') || 
+        deptUpper.includes('(GTT)') || 
+        deptLower.includes('guru tidak tetap') || 
+        deptLower.includes('gtt')
+      ) {
+        category = 'GTT';
+      } else if (
+        deptUpper === 'KTT' || 
+        deptUpper.startsWith('KTT') || 
+        deptUpper.includes(' KTT') || 
+        deptUpper.includes('/KTT') || 
+        deptUpper.includes('-KTT') || 
+        deptUpper.includes('(KTT)') || 
+        deptUpper === 'PTT' || 
+        deptLower.includes('karyawan tidak tetap') || 
+        deptLower.includes('ktt') || 
+        deptLower.includes('ptt')
+      ) {
+        category = 'KTT';
+      } else if (
+        deptUpper === 'GTY' || 
+        deptUpper.startsWith('GTY') || 
+        deptUpper.includes(' GTY') || 
+        deptUpper.includes('/GTY') || 
+        deptUpper.includes('-GTY') || 
+        deptUpper.includes('(GTY)') || 
+        deptLower.includes('guru tetap') || 
+        deptLower.includes('gty')
+      ) {
+        category = 'GTY';
+      } else if (
+        deptUpper === 'KTY' || 
+        deptUpper.startsWith('KTY') || 
+        deptUpper.includes(' KTY') || 
+        deptUpper.includes('/KTY') || 
+        deptUpper.includes('-KTY') || 
+        deptUpper.includes('(KTY)') || 
+        deptLower.includes('karyawan tetap') || 
+        deptLower.includes('kty')
+      ) {
+        category = 'KTY';
+      } else {
+        category = emp.employmentCategory || 
+          initial?.employmentCategory || 
+          (emp.role?.toLowerCase().includes('guru') || emp.department?.toLowerCase().includes('pendidik') ? 'GTY' : 'KTY');
+      }
 
       return {
         ...emp,
@@ -142,12 +194,20 @@ export default function App() {
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
     const saved = localStorage.getItem('absensi_leaves');
-    const savedEmployees = localStorage.getItem('absensi_employees');
-    const activeEmpIdSet = savedEmployees ? new Set((JSON.parse(savedEmployees) as Employee[]).map(e => e.id)) : null;
-
-    const reqs: LeaveRequest[] = saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
-    if (activeEmpIdSet) {
-      return reqs.filter(r => activeEmpIdSet.has(r.employeeId));
+    let reqs: LeaveRequest[] = INITIAL_LEAVE_REQUESTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as LeaveRequest[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const existingIds = new Set(parsed.map(r => r.id));
+          const missing = INITIAL_LEAVE_REQUESTS.filter(r => !existingIds.has(r.id));
+          reqs = [...parsed, ...missing];
+        } else {
+          reqs = INITIAL_LEAVE_REQUESTS;
+        }
+      } catch {
+        reqs = INITIAL_LEAVE_REQUESTS;
+      }
     }
     return reqs;
   });
@@ -157,16 +217,16 @@ export default function App() {
     return saved ? JSON.parse(saved) : DEFAULT_OFFICE_CONFIG;
   });
 
-  // Authentication State
+  // Authentication State: Session-based so opening link / fresh launch directly opens Login Page
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const savedAuth = localStorage.getItem('absensi_auth_logged_emp_id');
-    const savedEmp = localStorage.getItem('absensi_current_emp');
-    return Boolean(savedAuth || savedEmp);
+    const sessionAuth = sessionStorage.getItem('absensi_auth_logged_in');
+    return sessionAuth === 'true';
   });
 
   const [currentEmployeeId, setCurrentEmployeeId] = useState<string>(() => {
+    const sessionAuth = sessionStorage.getItem('absensi_auth_logged_emp_id');
     const savedAuth = localStorage.getItem('absensi_auth_logged_emp_id');
-    const saved = savedAuth || localStorage.getItem('absensi_current_emp');
+    const saved = sessionAuth || savedAuth || localStorage.getItem('absensi_current_emp');
     const savedEmployees = localStorage.getItem('absensi_employees');
     const emps: Employee[] = savedEmployees ? JSON.parse(savedEmployees) : INITIAL_EMPLOYEES;
     if (saved && emps.some(e => e.id === saved)) {
@@ -199,7 +259,12 @@ export default function App() {
   // Firebase Real-time Synchronization & Automatic Initial Seeding
   useEffect(() => {
     // 1. Initial background seed to Firestore if collections are empty
-    seedInitialDataIfEmpty(employees, attendanceRecords, leaveRequests, officeConfig)
+    seedInitialDataIfEmpty(
+      employees.length > 0 ? employees : INITIAL_EMPLOYEES,
+      attendanceRecords.length > 0 ? attendanceRecords : INITIAL_ATTENDANCE_RECORDS,
+      leaveRequests.length > 0 ? leaveRequests : INITIAL_LEAVE_REQUESTS,
+      officeConfig
+    )
       .then(() => {
         setCloudSyncStatus('connected');
       })
@@ -546,7 +611,7 @@ export default function App() {
                 type: 'WFO',
                 checkInTime: isLateReq && req.estimatedArrivalTime ? (req.estimatedArrivalTime.length === 5 ? `${req.estimatedArrivalTime}:00` : req.estimatedArrivalTime) : null,
                 checkOutTime: !isLateReq && req.estimatedDepartureTime ? (req.estimatedDepartureTime.length === 5 ? `${req.estimatedDepartureTime}:00` : req.estimatedDepartureTime) : null,
-                status: 'Izin',
+                status: isLateReq ? 'Terlambat' : 'Hadir Tepat Waktu',
                 hasLatePermit: isLateReq,
                 lateMinutes: isLateReq ? req.lateMinutes : undefined,
                 hasEarlyPermit: !isLateReq,
@@ -1147,6 +1212,8 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem('absensi_auth_logged_in');
+    sessionStorage.removeItem('absensi_auth_logged_emp_id');
     localStorage.removeItem('absensi_auth_logged_emp_id');
     setIsAuthenticated(false);
     showToast('Anda telah berhasil keluar dari akun.', 'info');
@@ -1155,6 +1222,8 @@ export default function App() {
   const handleLogin = (loggedEmp: Employee) => {
     setCurrentEmployeeId(loggedEmp.id);
     setIsAuthenticated(true);
+    sessionStorage.setItem('absensi_auth_logged_in', 'true');
+    sessionStorage.setItem('absensi_auth_logged_emp_id', loggedEmp.id);
     localStorage.setItem('absensi_auth_logged_emp_id', loggedEmp.id);
     localStorage.setItem('absensi_current_emp', loggedEmp.id);
     showToast(
@@ -1286,6 +1355,7 @@ export default function App() {
             {/* Rekapitulasi Izin Jam Kerja (Izin Datang Terlambat & Izin Pulang Awal) */}
             <PermitRecapDashboard
               requests={leaveRequests}
+              attendanceRecords={attendanceRecords}
               employees={employees}
               currentEmployee={currentEmployee}
               officeConfig={officeConfig}
@@ -1522,6 +1592,39 @@ export default function App() {
               currentEmployee={currentEmployee}
               onUpdateEmployeeTmt={handleUpdateEmployeeTmt}
               onUpdateEmployeeCategory={handleUpdateEmployeeCategory}
+            />
+          </div>
+        )}
+
+        {/* Tab 6: Rekap Bulanan (Format 3.png) */}
+        {activeTab === 'rekap-bulanan' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <MonthlyEmployeeRecap
+              employees={employees}
+              attendanceRecords={attendanceRecords}
+              leaveRequests={leaveRequests}
+              officeConfig={officeConfig}
+              currentEmployee={currentEmployee}
+              onImportAttendance={(importedRecords) => {
+                setAttendanceRecords((prev) => {
+                  const map = new Map<string, AttendanceRecord>();
+                  prev.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+                  importedRecords.forEach((r) => map.set(`${r.employeeId}_${r.date}`, r));
+                  return Array.from(map.values()).sort((a, b) => 
+                    (b.date + (b.checkInTime || '')).localeCompare(a.date + (a.checkInTime || ''))
+                  );
+                });
+                importedRecords.forEach((r) => syncAttendanceRecordToFirestore(r));
+              }}
+              onDeleteAttendanceRecord={(recordId) => {
+                setAttendanceRecords((prev) => prev.filter((r) => r.id !== recordId));
+                deleteAttendanceRecordFromFirestore(recordId);
+              }}
+              onDeleteMultipleAttendanceRecords={(recordIds) => {
+                setAttendanceRecords((prev) => prev.filter((r) => !recordIds.includes(r.id)));
+                recordIds.forEach((id) => deleteAttendanceRecordFromFirestore(id));
+              }}
+              onShowToast={(text, type) => showToast(text, type)}
             />
           </div>
         )}

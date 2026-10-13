@@ -34,7 +34,13 @@ export default function DashboardStats({
   
   const presentOnTime = todayRecords.filter(r => r.status === 'Hadir Tepat Waktu').length;
   const presentLate = todayRecords.filter(r => r.status === 'Terlambat').length;
-  const todayIzin = todayRecords.filter(r => r.status === 'Izin').length;
+  // Izin tidak masuk murni (ijin datang terlambat dan ijin pulang awal tidak masuk hitungan ijin)
+  const todayIzin = todayRecords.filter(r => {
+    if (r.status !== 'Izin') return false;
+    const isLate = r.hasLatePermit || (r.lateMinutes && r.lateMinutes > 0) || (r.notes && r.notes.toLowerCase().includes('terlambat'));
+    const isEarly = r.hasEarlyPermit || (r.earlyMinutes && r.earlyMinutes > 0) || (r.notes && (r.notes.toLowerCase().includes('pulang awal') || r.notes.toLowerCase().includes('pulang cepat')));
+    return !isLate && !isEarly;
+  }).length;
   const todaySakit = todayRecords.filter(r => r.status === 'Sakit').length;
   
   // Explicit records with status Alpha (entered manually by Admin or Superadmin)

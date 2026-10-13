@@ -85,6 +85,9 @@ export default function EmployeeManagement({
   const [nik, setNik] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [birthPlace, setBirthPlace] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [department, setDepartment] = useState('');
   const [customDepartment, setCustomDepartment] = useState('');
   const [role, setRole] = useState('');
@@ -113,6 +116,9 @@ export default function EmployeeManagement({
     setNik(`KRY-2024-${String(nextNum).padStart(3, '0')}`);
     setEmail('');
     setPhone('+62 8');
+    setAddress('');
+    setBirthPlace('');
+    setBirthDate('');
     setDepartment(departments[0] || 'Teknologi & Informasi');
     setCustomDepartment('');
     setRole('');
@@ -136,6 +142,9 @@ export default function EmployeeManagement({
     setNik(emp.nik);
     setEmail(emp.email);
     setPhone(emp.phone);
+    setAddress(emp.address || '');
+    setBirthPlace(emp.birthPlace || '');
+    setBirthDate(emp.birthDate || '');
     setTmt(emp.tmt || '');
     if (departments.includes(emp.department)) {
       setDepartment(emp.department);
@@ -262,6 +271,9 @@ export default function EmployeeManagement({
         nik: nik.trim(),
         email: email.trim(),
         phone: phone.trim(),
+        address: address.trim() || undefined,
+        birthPlace: birthPlace.trim() || undefined,
+        birthDate: birthDate.trim() || undefined,
         department: finalDept,
         role: role.trim(),
         systemRole,
@@ -276,6 +288,9 @@ export default function EmployeeManagement({
         nik: nik.trim(),
         email: email.trim(),
         phone: phone.trim(),
+        address: address.trim() || undefined,
+        birthPlace: birthPlace.trim() || undefined,
+        birthDate: birthDate.trim() || undefined,
         department: finalDept,
         role: role.trim(),
         systemRole,
@@ -642,6 +657,21 @@ export default function EmployeeManagement({
                           </>
                         )}
                       </div>
+
+                      {(emp.birthPlace || emp.birthDate || emp.address) && (
+                        <div className="text-[11px] text-slate-600 pt-1 space-y-0.5 bg-slate-50/80 p-2 rounded-lg border border-slate-100">
+                          {(emp.birthPlace || emp.birthDate) && (
+                            <div>
+                              <span className="font-semibold text-slate-700">Tempat/Tgl Lahir:</span> {emp.birthPlace || '-'}{emp.birthDate ? `, ${emp.birthDate}` : ''}
+                            </div>
+                          )}
+                          {emp.address && (
+                            <div>
+                              <span className="font-semibold text-slate-700">Alamat:</span> {emp.address}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -937,6 +967,45 @@ export default function EmployeeManagement({
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tempat Lahir
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Jakarta"
+                    value={birthPlace}
+                    onChange={(e) => setBirthPlace(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tanggal Lahir
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 17 Agustus 1990 atau 1990-08-17"
+                    value={birthDate}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Alamat Domisili / Tempat Tinggal
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Contoh: Jl. Merdeka No. 10, RT 01/02, Kel. Menteng, Jakarta Pusat"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
                   />
                 </div>
 

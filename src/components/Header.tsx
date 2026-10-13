@@ -23,7 +23,8 @@ import {
   Smartphone,
   LogOut,
   Award,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar
 } from 'lucide-react';
 import { Employee, OfficeConfig } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -32,8 +33,8 @@ interface HeaderProps {
   currentEmployee: Employee;
   employees: Employee[];
   onSelectEmployee: (employee: Employee) => void;
-  activeTab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja';
-  onTabChange: (tab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja') => void;
+  activeTab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja' | 'rekap-bulanan';
+  onTabChange: (tab: 'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja' | 'rekap-bulanan') => void;
   officeConfig: OfficeConfig;
   onOpenOfficeModal: () => void;
   onOpenAddEmployeeModal?: () => void;
@@ -673,6 +674,28 @@ export default function Header({
                 : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
             }`}>
               SMK Texmaco
+            </span>
+          </button>
+
+          {/* Rekap Bulanan (Format 3.png) */}
+          <button
+            type="button"
+            id="nav-tab-rekap-bulanan"
+            onClick={() => onTabChange('rekap-bulanan')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'rekap-bulanan'
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-amber-500" />
+            <span>Rekap Bulanan</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+              activeTab === 'rekap-bulanan' 
+                ? 'bg-blue-700/60 text-blue-100' 
+                : 'bg-amber-50 text-amber-700 border border-amber-200'
+            }`}>
+              Texmaco
             </span>
           </button>
 

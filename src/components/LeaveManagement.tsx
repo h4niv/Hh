@@ -98,6 +98,7 @@ export default function LeaveManagement({
 }: LeaveManagementProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterTab, setFilterTab] = useState<'all' | 'cuti_sakit' | 'terlambat' | 'pulang_awal' | 'pending'>('all');
+  const [viewScope, setViewScope] = useState<'all' | 'mine'>('all');
   const [activeQuotaTab, setActiveQuotaTab] = useState<'terlambat' | 'pulang_awal'>('terlambat');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     return new Date().toISOString().slice(0, 7); // e.g. "2026-09"
@@ -203,8 +204,9 @@ export default function LeaveManagement({
   };
 
   const totalDays = calculateDays(startDate, endDate);
-  const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
-  const isSuperAdmin = currentEmployee.systemRole === 'superadmin' || currentEmployee.role.toLowerCase().includes('super');
+  const isSuperAdmin = currentEmployee?.systemRole === 'superadmin' || currentEmployee?.role?.toLowerCase().includes('super') || currentEmployee?.role?.toLowerCase().includes('direktur');
+  const isAdmin = currentEmployee?.systemRole === 'admin' || currentEmployee?.role?.toLowerCase().includes('hrd') || currentEmployee?.role?.toLowerCase().includes('kepala') || currentEmployee?.role?.toLowerCase().includes('manager') || currentEmployee?.role?.toLowerCase().includes('admin');
+  const isAdminOrSuper = isSuperAdmin || isAdmin;
 
   // Super Admin: Edit and Delete state
   const [editingRequest, setEditingRequest] = useState<LeaveRequest | null>(null);
@@ -393,13 +395,22 @@ export default function LeaveManagement({
     return Array.from(monthsSet).sort().reverse();
   }, [requests]);
 
-  // Filtered and Sorted requests list (only active employees, restricted to current user if not admin/superadmin, sorted by chosen field)
+  const myRequestsCount = useMemo(() => {
+    return requests.filter((r) => r.employeeId === currentEmployee.id).length;
+  }, [requests, currentEmployee.id]);
+
+  // Filtered and Sorted requests list (only active employees, restricted to current user if chosen, sorted by chosen field)
   const filteredRequests = useMemo(() => {
     const list = requests.filter((req) => {
-      if (!activeEmpIdSet.has(req.employeeId)) return false;
+      // Pastikan data pengajuan valid (apabila daftar karyawan sudah termuat)
+      if (employees.length > 0) {
+        const isKnown = activeEmpIdSet.has(req.employeeId) || 
+                        employees.some(e => (req.employeeNik && e.nik === req.employeeNik) || (req.employeeName && e.name.toLowerCase() === req.employeeName.toLowerCase()));
+        if (!isKnown && !req.employeeName) return false;
+      }
 
-      // Pembatasan Akses: Karyawan biasa hanya dapat melihat pengajuan izin dirinya sendiri
-      if (!isAdminOrSuper && req.employeeId !== currentEmployee.id) {
+      // Pembatasan Akses: Jika memilih mode 'mine' (hanya permohonan saya)
+      if (viewScope === 'mine' && req.employeeId !== currentEmployee.id) {
         return false;
       }
 
@@ -477,19 +488,19 @@ export default function LeaveManagement({
     });
 
     return list;
-  }, [requests, filterTab, activeEmpIdSet, isAdminOrSuper, currentEmployee.id, tableMonthFilter, tableSearchQuery, sortField, sortDirection]);
+  }, [requests, filterTab, activeEmpIdSet, employees, viewScope, currentEmployee.id, tableMonthFilter, tableSearchQuery, sortField, sortDirection]);
 
   const totalLateRequestsAll = useMemo(() => {
-    return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Datang Terlambat').length;
-  }, [requests, activeEmpIdSet]);
+    return requests.filter((r) => r.type === 'Izin Datang Terlambat').length;
+  }, [requests]);
 
   const totalEarlyRequestsAll = useMemo(() => {
-    return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.type === 'Izin Pulang Awal').length;
-  }, [requests, activeEmpIdSet]);
+    return requests.filter((r) => r.type === 'Izin Pulang Awal').length;
+  }, [requests]);
 
   const totalPendingRequests = useMemo(() => {
-    return requests.filter((r) => activeEmpIdSet.has(r.employeeId) && r.status === 'Menunggu').length;
-  }, [requests, activeEmpIdSet]);
+    return requests.filter((r) => r.status === 'Menunggu').length;
+  }, [requests]);
 
   // Form submit handler
   const handleSubmit = (e: FormEvent) => {
@@ -1056,16 +1067,48 @@ export default function LeaveManagement({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Scope Toggle: Semua Tim vs Pengajuan Saya */}
+            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl border border-slate-300">
+              <button
+                type="button"
+                id="btn-scope-all"
+                onClick={() => setViewScope('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewScope === 'all'
+                    ? 'bg-white text-blue-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Semua Permohonan ({requests.length})
+              </button>
+              <button
+                type="button"
+                id="btn-scope-mine"
+                onClick={() => setViewScope('mine')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewScope === 'mine'
+                    ? 'bg-white text-blue-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Pengajuan Saya ({myRequestsCount})
+              </button>
+            </div>
+
             {isSuperAdmin ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
-                <span>Otoritas Super Admin: Akses Edit & Hapus Aktif</span>
+                <span>Super Admin: Review, Edit & Hapus</span>
               </span>
             ) : isAdminOrSuper ? (
-              <span className="text-[11px] text-slate-500 font-medium">Mode Otoritas Admin: Dapat menyetujui / menolak</span>
+              <span className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 font-semibold px-2.5 py-1 rounded-lg">
+                Mode Otoritas Admin: Dapat menyetujui / menolak
+              </span>
             ) : (
-              <span className="text-[11px] text-slate-400">Menampilkan pengajuan tim kantor</span>
+              <span className="text-[11px] text-slate-500 font-medium">
+                {viewScope === 'all' ? 'Menampilkan semua pengajuan tim kantor' : 'Menampilkan pengajuan pribadi Anda'}
+              </span>
             )}
           </div>
         </div>
@@ -1264,17 +1307,28 @@ export default function LeaveManagement({
                   <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FileText className="w-8 h-8 text-slate-300" />
-                      <p className="font-medium text-slate-500">Tidak ada data pengajuan yang sesuai kriteria.</p>
-                      {(tableSearchQuery || tableMonthFilter !== 'all') && (
+                      <p className="font-medium text-slate-600 text-sm">Tidak ada data pengajuan yang sesuai kriteria.</p>
+                      {viewScope === 'mine' && (
+                        <button
+                          type="button"
+                          onClick={() => setViewScope('all')}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-bold cursor-pointer underline mt-1"
+                        >
+                          Lihat Semua Permohonan Tim & Status Persetujuan ({requests.length})
+                        </button>
+                      )}
+                      {(tableSearchQuery || tableMonthFilter !== 'all' || filterTab !== 'all') && (
                         <button
                           type="button"
                           onClick={() => {
                             setTableSearchQuery('');
                             setTableMonthFilter('all');
+                            setFilterTab('all');
+                            setViewScope('all');
                           }}
                           className="text-xs text-blue-600 hover:text-blue-700 font-semibold cursor-pointer underline"
                         >
-                          Reset Filter & Pencarian
+                          Tampilkan Semua Data & Reset Filter
                         </button>
                       )}
                     </div>
