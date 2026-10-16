@@ -390,7 +390,10 @@ export default function SemesterPerformanceReport({
 
         // Check attendance records
         attendanceRecords.forEach(rec => {
-          if (rec.employeeId === emp.id && rec.date >= range.start && rec.date <= range.end) {
+          const isMatch = rec.employeeId === emp.id || 
+                          (Boolean(rec.employeeNik) && rec.employeeNik.trim().toLowerCase() === emp.nik.trim().toLowerCase()) ||
+                          (Boolean(rec.employeeName) && rec.employeeName.trim().toLowerCase() === emp.name.trim().toLowerCase());
+          if (isMatch && rec.date >= range.start && rec.date <= range.end) {
             let late = rec.lateMinutes || 0;
             if (late <= 0 && rec.status === 'Terlambat') {
               if (rec.checkInTime) {
@@ -461,7 +464,10 @@ export default function SemesterPerformanceReport({
 
       // Attendance records check strictly from Rekapitulasi Kehadiran
       attendanceRecords.forEach(rec => {
-        if (rec.employeeId === emp.id) {
+        const isMatch = rec.employeeId === emp.id || 
+                        (Boolean(rec.employeeNik) && rec.employeeNik.trim().toLowerCase() === emp.nik.trim().toLowerCase()) ||
+                        (Boolean(rec.employeeName) && rec.employeeName.trim().toLowerCase() === emp.name.trim().toLowerCase());
+        if (isMatch) {
           const inSemester = rec.date >= semesterInfo.semesterStartDate && rec.date <= semesterInfo.semesterEndDate;
           if (inSemester) {
             const dayName = getIndonesianDayName(rec.date);

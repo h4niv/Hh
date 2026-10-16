@@ -8,7 +8,10 @@ import {
   Check, 
   Navigation,
   RotateCcw,
-  Users
+  Users,
+  Download,
+  Upload,
+  Database
 } from 'lucide-react';
 import { OfficeConfig } from '../types';
 import { DEFAULT_OFFICE_CONFIG } from '../data/mockData';
@@ -18,6 +21,8 @@ interface OfficeSettingsModalProps {
   config: OfficeConfig;
   onClose: () => void;
   onSave: (updatedConfig: OfficeConfig) => void;
+  onBackupDatabase?: () => void;
+  onRestoreDatabase?: (jsonString: string) => void;
 }
 
 export default function OfficeSettingsModal({
@@ -25,6 +30,8 @@ export default function OfficeSettingsModal({
   config,
   onClose,
   onSave,
+  onBackupDatabase,
+  onRestoreDatabase,
 }: OfficeSettingsModalProps) {
   const [formData, setFormData] = useState<OfficeConfig>(config);
   const [isDetectingCurrentLocation, setIsDetectingCurrentLocation] = useState(false);
@@ -386,6 +393,59 @@ export default function OfficeSettingsModal({
                   Contoh: 120 menit (setara 2 jam) akumulasi izin pulang awal.
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Backup & Restore Database Section */}
+          <div className="p-4 bg-amber-50/65 rounded-xl border border-amber-200/80 space-y-3">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-amber-700" />
+              <div>
+                <span className="text-xs font-bold text-amber-950 block">
+                  Backup & Restore Database (Cloud & Lokal)
+                </span>
+                <span className="text-[11px] text-amber-800">
+                  Unduh cadangan seluruh data sistem (.json) atau pulihkan database dari file cadangan sebelumnya
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {onBackupDatabase && (
+                <button
+                  type="button"
+                  onClick={onBackupDatabase}
+                  className="py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Backup Database (.json)
+                </button>
+              )}
+
+              {onRestoreDatabase && (
+                <label className="py-2 px-3 rounded-xl bg-white hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-amber-300 shadow-xs">
+                  <Upload className="w-3.5 h-3.5" />
+                  Restore Database
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const content = event.target?.result as string;
+                        if (content && onRestoreDatabase) {
+                          onRestoreDatabase(content);
+                        }
+                      };
+                      reader.readAsText(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
             </div>
           </div>
 

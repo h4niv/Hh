@@ -34,7 +34,7 @@ export default function LiveFingerprintToast({
   const isLate = record?.status === 'Terlambat';
 
   return (
-    <div className="fixed top-20 right-4 z-50 max-w-md w-full animate-in slide-in-from-top-4 fade-in duration-300">
+    <div className="fixed top-20 right-4 z-50 max-w-md w-full animate-in slide-in-from-top-4 fade-in duration-300 print:hidden">
       <div className={`p-4 rounded-2xl shadow-2xl border backdrop-blur-md transition-all ${
         isUnmapped
           ? 'bg-rose-900/95 border-rose-500 text-white'

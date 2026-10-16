@@ -18,6 +18,7 @@ interface ImportAttendanceModalProps {
   onClose: () => void;
   employees: Employee[];
   onImport: (importedRecords: AttendanceRecord[]) => void;
+  selectedCategory: string;
 }
 
 interface ParsedAttendanceRow {
@@ -39,6 +40,7 @@ export default function ImportAttendanceModal({
   onClose,
   employees,
   onImport,
+  selectedCategory,
 }: ImportAttendanceModalProps) {
   const [fileName, setFileName] = useState<string>('');
   const [fileSize, setFileSize] = useState<string>('');
@@ -53,6 +55,50 @@ export default function ImportAttendanceModal({
   // Function to download standard Excel template with separate sheets per employee
   const handleDownloadTemplate = () => {
     const todayStr = new Date().toISOString().split('T')[0];
+    const workbook = XLSX.utils.book_new();
+
+    const formatWorksheetCells = (worksheet: XLSX.WorkSheet) => {
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:G2');
+      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+        const dateRef = XLSX.utils.encode_cell({ r: R, c: 2 }); // Tanggal
+        const inRef = XLSX.utils.encode_cell({ r: R, c: 3 });    // Jam Masuk
+        const outRef = XLSX.utils.encode_cell({ r: R, c: 4 });   // Jam Keluar
+
+        if (worksheet[dateRef]) {
+          const dVal = new Date(todayStr);
+          worksheet[dateRef].t = 'd';
+          worksheet[dateRef].v = isNaN(dVal.getTime()) ? new Date() : dVal;
+          worksheet[dateRef].z = 'yyyy-mm-dd';
+        }
+        if (worksheet[inRef]) {
+          const timeStr = String(worksheet[inRef].v || '08:00');
+          const parts = timeStr.split(':');
+          if (parts.length >= 2) {
+            const h = parseInt(parts[0], 10) || 0;
+            const m = parseInt(parts[1], 10) || 0;
+            worksheet[inRef].t = 'n';
+            worksheet[inRef].v = (h * 3600 + m * 60) / 86400;
+            worksheet[inRef].z = 'hh:mm';
+          } else {
+            worksheet[inRef].z = 'hh:mm';
+          }
+        }
+        if (worksheet[outRef]) {
+          const timeStr = String(worksheet[outRef].v || '17:00');
+          const parts = timeStr.split(':');
+          if (parts.length >= 2) {
+            const h = parseInt(parts[0], 10) || 0;
+            const m = parseInt(parts[1], 10) || 0;
+            worksheet[outRef].t = 'n';
+            worksheet[outRef].v = (h * 3600 + m * 60) / 86400;
+            worksheet[outRef].z = 'hh:mm';
+          } else {
+            worksheet[outRef].z = 'hh:mm';
+          }
+        }
+      }
+    };
+
     const filteredEmployees = (employees || []).filter(emp => {
       if (!selectedCategory || selectedCategory === 'ALL') return true;
       const deptUpper = (emp.department || '').trim().toUpperCase();
@@ -74,30 +120,76 @@ export default function ImportAttendanceModal({
       return cat === selectedCategory;
     });
 
-    const listToUse = filteredEmployees.length > 0 ? filteredEmployees : (employees || []).slice(0, 10);
-    
-    // Build CSV content
-    const headers = ['NIK', 'Nama Karyawan', 'Tanggal (YYYY-MM-DD)', 'Jam Masuk', 'Jam Keluar', 'Status Kehadiran', 'Keterangan'];
-    const rows = listToUse.map((emp, index) => [
-      emp.nik || `KRY-2024-00${index + 1}`,
-      `"${(emp.name || 'Karyawan').replace(/"/g, '""')}"`,
-      todayStr,
-      emp.shift?.startTime || '08:00',
-      emp.shift?.endTime || '17:00',
-      'Hadir Tepat Waktu',
-      'Hadir'
-    ]);
+    if (filteredEmployees && filteredEmployees.length > 0) {
+      filteredEmployees.forEach((emp, index) => {
+        const empSheetData = [
+          {
+            'NIK': emp.nik || `KRY-2024-00${index + 1}`,
+            'Nama Karyawan': emp.name || 'Karyawan',
+            'Tanggal (YYYY-MM-DD)': todayStr,
+            'Jam Masuk': emp.shift?.startTime || '08:00',
+            'Jam Keluar': emp.shift?.endTime || '17:00',
+            'Status Kehadiran': 'Hadir Tepat Waktu',
+            'Keterangan': 'Hadir',
+          },
+        ];
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Template_Presensi_${selectedCategory || 'ALL'}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const worksheet = XLSX.utils.json_to_sheet(empSheetData);
+        worksheet['!cols'] = [
+          { wch: 18 }, // NIK
+          { wch: 25 }, // Nama Karyawan
+          { wch: 20 }, // Tanggal
+          { wch: 14 }, // Jam Masuk
+          { wch: 14 }, // Jam Keluar
+          { wch: 22 }, // Status Kehadiran
+          { wch: 30 }, // Keterangan
+        ];
+
+        formatWorksheetCells(worksheet);
+
+        let safeName = (emp.name || `Emp_${index + 1}`).replace(/[:\\\/?*\[\]]/g, '_');
+        if (safeName.length > 31) safeName = safeName.substring(0, 31);
+
+        let sheetName = safeName;
+        let counter = 1;
+        while (workbook.SheetNames.includes(sheetName)) {
+          sheetName = `${safeName.substring(0, 27)}_${counter}`;
+          counter++;
+        }
+
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      });
+    } else {
+      const sampleData = [
+        {
+          'NIK': 'KRY-2024-001',
+          'Nama Karyawan': 'Dimas Prasetyo',
+          'Tanggal (YYYY-MM-DD)': todayStr,
+          'Jam Masuk': '08:15',
+          'Jam Keluar': '17:00',
+          'Status Kehadiran': 'Terlambat',
+          'Keterangan': 'Macet di jalan tol',
+        },
+      ];
+      const worksheet = XLSX.utils.json_to_sheet(sampleData);
+      worksheet['!cols'] = [{ wch: 18 }, { wch: 25 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 30 }];
+      formatWorksheetCells(worksheet);
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Dimas Prasetyo');
+    }
+
+    // Instruction sheet
+    const petunjukData = [
+      { 'Panduan Pengisian': '1. Setiap sheet (lembar kerja) mewakili satu nama karyawan.' },
+      { 'Panduan Pengisian': '2. Kolom NIK dan Tanggal (format Date YYYY-MM-DD) wajib diisi dengan benar.' },
+      { 'Panduan Pengisian': '3. Kolom Jam Masuk dan Jam Keluar menggunakan format Time (HH:MM).' },
+      { 'Panduan Pengisian': '4. Status Kehadiran yang didukung: Hadir Tepat Waktu, Terlambat, Alpha, Sakit, Izin, Dinas Luar.' },
+      { 'Panduan Pengisian': '5. Simpan file dalam format .xlsx dan unggah kembali melalui sistem.' },
+    ];
+    const petunjukSheet = XLSX.utils.json_to_sheet(petunjukData);
+    petunjukSheet['!cols'] = [{ wch: 80 }];
+    XLSX.utils.book_append_sheet(workbook, petunjukSheet, 'Petunjuk Pengisian');
+
+    XLSX.writeFile(workbook, `Template_Presensi_${selectedCategory || 'ALL'}.xlsx`);
   };
 
   const parseExcelDate = (val: unknown): string => {

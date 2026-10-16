@@ -47,6 +47,7 @@ import AndroidAppModal from './components/AndroidAppModal';
 import LiveFingerprintToast from './components/LiveFingerprintToast';
 import SemesterPerformanceReport from './components/SemesterPerformanceReport';
 import MonthlyEmployeeRecap from './components/MonthlyEmployeeRecap';
+import DailyRecap from './components/DailyRecap';
 import { LoginPage } from './components/LoginPage';
 import { useFingerprintLiveStream } from './hooks/useFingerprintLiveStream';
 import {
@@ -73,22 +74,19 @@ export default function App() {
     const savedOffice = localStorage.getItem('absensi_office_config');
     const cfg: OfficeConfig = savedOffice ? JSON.parse(savedOffice) : DEFAULT_OFFICE_CONFIG;
     
-    const initialMap = new Map(INITIAL_EMPLOYEES.map(e => [e.id, e]));
-
     let emps: Employee[] = INITIAL_EMPLOYEES;
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Employee[];
-        const existingIds = new Set(parsed.map(e => e.id));
-        const missing = INITIAL_EMPLOYEES.filter(e => !existingIds.has(e.id));
-        emps = [...parsed, ...missing];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          emps = parsed;
+        }
       } catch {
         emps = INITIAL_EMPLOYEES;
       }
     }
 
     const updated = emps.map(emp => {
-      const initial = initialMap.get(emp.id);
       const deptUpper = (emp.department || '').trim().toUpperCase();
       const deptLower = (emp.department || '').trim().toLowerCase();
       let category: 'GTY' | 'GTT' | 'KTY' | 'KTT' | 'PTT';
@@ -141,55 +139,43 @@ export default function App() {
         category = 'KTY';
       } else {
         category = emp.employmentCategory || 
-          initial?.employmentCategory || 
           (emp.role?.toLowerCase().includes('guru') || emp.department?.toLowerCase().includes('pendidik') ? 'GTY' : 'KTY');
       }
 
       return {
         ...emp,
-        role: initial?.role && (emp.role === 'Head of IT & System Architect' || emp.role === 'Digital Marketing Lead') ? initial.role : emp.role,
-        department: initial?.department && (emp.department === 'Teknologi & Informasi' || emp.department === 'Pemasaran & Bisnis') ? initial.department : emp.department,
         employmentCategory: category,
         shift: {
-          ...emp.shift,
-          startTime: cfg.workStartTime || '08:30',
-          endTime: cfg.workEndTime || '17:30',
-          lateToleranceMinutes: cfg.lateToleranceMinutes ?? 15,
-          name: `${emp.shift.name.split(' (')[0] || 'Reguler'} (${cfg.workStartTime || '08:30'} - ${cfg.workEndTime || '17:30'})`,
+          startTime: emp.shift?.startTime || cfg.workStartTime || '07:00',
+          endTime: emp.shift?.endTime || cfg.workEndTime || '15:15',
+          lateToleranceMinutes: emp.shift?.lateToleranceMinutes ?? cfg.lateToleranceMinutes ?? 5,
+          name: emp.shift?.name || `Reguler (${cfg.workStartTime || '07:00'} - ${cfg.workEndTime || '15:15'})`,
+          id: emp.shift?.id || `shift-${emp.id}`,
         }
       };
     });
 
-    localStorage.setItem('absensi_employees', JSON.stringify(updated));
+    try {
+      localStorage.setItem('absensi_employees', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
     return updated;
   });
 
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => {
     const saved = localStorage.getItem('absensi_records');
-    const savedEmployees = localStorage.getItem('absensi_employees');
-    const activeEmpIdSet = savedEmployees ? new Set((JSON.parse(savedEmployees) as Employee[]).map(e => e.id)) : null;
-
-    let records = INITIAL_ATTENDANCE_RECORDS;
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as AttendanceRecord[];
-        if (parsed.length <= 3) {
-          const existingIds = new Set(parsed.map(r => r.id));
-          const missing = INITIAL_ATTENDANCE_RECORDS.filter(r => !existingIds.has(r.id));
-          records = [...parsed, ...missing];
-        } else {
-          records = parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       } catch {
-        records = INITIAL_ATTENDANCE_RECORDS;
+        // ignore
       }
     }
-
-    // Filter out records for deleted employees if employees list exists
-    if (activeEmpIdSet) {
-      return records.filter(r => activeEmpIdSet.has(r.employeeId));
-    }
-    return records;
+    return INITIAL_ATTENDANCE_RECORDS;
   });
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
@@ -199,9 +185,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved) as LeaveRequest[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const existingIds = new Set(parsed.map(r => r.id));
-          const missing = INITIAL_LEAVE_REQUESTS.filter(r => !existingIds.has(r.id));
-          reqs = [...parsed, ...missing];
+          reqs = parsed;
         } else {
           reqs = INITIAL_LEAVE_REQUESTS;
         }
@@ -232,10 +216,12 @@ export default function App() {
     if (saved && emps.some(e => e.id === saved)) {
       return saved;
     }
-    return emps[0]?.id || 'emp-1';
+    // Default to superadmin or first employee
+    const superAdmin = emps.find(e => e.systemRole === 'superadmin');
+    return superAdmin?.id || emps[0]?.id || 'emp-1';
   });
 
-  const [activeTab, setActiveTab] = useState<'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja'>('presensi');
+  const [activeTab, setActiveTab] = useState<'presensi' | 'rekap' | 'cuti' | 'karyawan' | 'pengaturan' | 'kinerja' | 'rekap-bulanan'>('presensi');
   const [isAddEmployeeModalDirectOpen, setIsAddEmployeeModalDirectOpen] = useState<boolean>(false);
   const [leaveModalInitialType, setLeaveModalInitialType] = useState<LeaveType | null>(null);
   const [isLeaveModalAutoOpen, setIsLeaveModalAutoOpen] = useState<boolean>(false);
@@ -276,6 +262,15 @@ export default function App() {
     const unsubEmployees = subscribeToEmployees((remoteEmps) => {
       if (remoteEmps && remoteEmps.length > 0) {
         setEmployees(remoteEmps);
+        setCurrentEmployeeId((prev) => {
+          if (remoteEmps.some(e => e.id === prev)) {
+            return prev;
+          }
+          // Prioritize Superadmin, then Admin, then first employee
+          const superAdmin = remoteEmps.find(e => e.systemRole === 'superadmin');
+          const admin = remoteEmps.find(e => e.systemRole === 'admin');
+          return superAdmin?.id || admin?.id || remoteEmps[0].id;
+        });
       }
     });
 
@@ -301,10 +296,10 @@ export default function App() {
               ...emp,
               shift: {
                 ...emp.shift,
-                startTime: remoteConfig.workStartTime,
-                endTime: remoteConfig.workEndTime,
-                lateToleranceMinutes: remoteConfig.lateToleranceMinutes,
-                name: `${emp.shift.name.split(' (')[0] || 'Reguler'} (${remoteConfig.workStartTime} - ${remoteConfig.workEndTime})`,
+                startTime: remoteConfig.workStartTime || '07:00',
+                endTime: remoteConfig.workEndTime || '15:15',
+                lateToleranceMinutes: remoteConfig.lateToleranceMinutes ?? 5,
+                name: `${emp.shift?.name?.split(' (')[0] || 'Reguler'} (${remoteConfig.workStartTime || '07:00'} - ${remoteConfig.workEndTime || '15:15'})`,
               }
             };
             return updatedEmp;
@@ -334,52 +329,52 @@ export default function App() {
     }
   };
 
-  // Sync to localStorage
+  // Sync to localStorage with quota protection
   useEffect(() => {
-    localStorage.setItem('absensi_employees', JSON.stringify(employees));
+    try {
+      localStorage.setItem('absensi_employees', JSON.stringify(employees));
+    } catch (e) {
+      console.warn('Failed to save employees to localStorage:', e);
+    }
   }, [employees]);
 
   useEffect(() => {
-    localStorage.setItem('absensi_records', JSON.stringify(attendanceRecords));
+    try {
+      // Strip large base64 image data to safely fit inside browser localStorage quota
+      const lightRecords = attendanceRecords.slice(0, 500).map(r => ({
+        ...r,
+        checkInPhoto: r.checkInPhoto && r.checkInPhoto.startsWith('data:') ? undefined : r.checkInPhoto,
+        checkOutPhoto: r.checkOutPhoto && r.checkOutPhoto.startsWith('data:') ? undefined : r.checkOutPhoto,
+      }));
+      localStorage.setItem('absensi_records', JSON.stringify(lightRecords));
+    } catch (e) {
+      console.warn('Failed to save attendance records to localStorage:', e);
+    }
   }, [attendanceRecords]);
 
   useEffect(() => {
-    localStorage.setItem('absensi_leaves', JSON.stringify(leaveRequests));
+    try {
+      localStorage.setItem('absensi_leaves', JSON.stringify(leaveRequests));
+    } catch (e) {
+      console.warn('Failed to save leaves to localStorage:', e);
+    }
   }, [leaveRequests]);
 
   useEffect(() => {
-    localStorage.setItem('absensi_office_config', JSON.stringify(officeConfig));
+    try {
+      localStorage.setItem('absensi_office_config', JSON.stringify(officeConfig));
+    } catch (e) {
+      console.warn('Failed to save office config to localStorage:', e);
+    }
   }, [officeConfig]);
 
   useEffect(() => {
-    localStorage.setItem('absensi_current_emp', currentEmployeeId);
+    try {
+      localStorage.setItem('absensi_current_emp', currentEmployeeId);
+    } catch (e) {
+      console.warn('Failed to save current emp to localStorage:', e);
+    }
   }, [currentEmployeeId]);
-
-  // Auto-clean orphaned attendance and leave records whenever employees list changes
-  useEffect(() => {
-    const activeEmpIds = new Set(employees.map((e) => e.id));
-    const activeEmpNames = new Set(employees.map((e) => e.name.toLowerCase().trim()));
-
-    setAttendanceRecords((prev) => {
-      const cleaned = prev.filter(
-        (r) => activeEmpIds.has(r.employeeId) || activeEmpNames.has(r.employeeName.toLowerCase().trim())
-      );
-      if (cleaned.length !== prev.length) {
-        return cleaned;
-      }
-      return prev;
-    });
-
-    setLeaveRequests((prev) => {
-      const cleaned = prev.filter(
-        (lr) => activeEmpIds.has(lr.employeeId) || activeEmpNames.has(lr.employeeName.toLowerCase().trim())
-      );
-      if (cleaned.length !== prev.length) {
-        return cleaned;
-      }
-      return prev;
-    });
-  }, [employees]);
 
   const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -433,15 +428,29 @@ export default function App() {
   // Today's records for all active employees
   const todayRecords = useMemo(() => {
     const activeEmpIds = new Set(employees.map((e) => e.id));
-    return attendanceRecords.filter((r) => r.date === todayStr && activeEmpIds.has(r.employeeId));
+    const activeEmpNiks = new Set(employees.map((e) => e.nik.toLowerCase().trim()));
+    const activeEmpNames = new Set(employees.map((e) => e.name.toLowerCase().trim()));
+
+    return attendanceRecords.filter((r) => {
+      if (r.date !== todayStr) return false;
+      if (employees.length === 0) return true;
+      return activeEmpIds.has(r.employeeId) ||
+        (Boolean(r.employeeNik) && activeEmpNiks.has(r.employeeNik.toLowerCase().trim())) ||
+        (Boolean(r.employeeName) && activeEmpNames.has(r.employeeName.toLowerCase().trim()));
+    });
   }, [attendanceRecords, employees, todayStr]);
 
   // Today's record for currently selected employee
   const currentEmployeeTodayRecord = useMemo(() => {
+    if (!currentEmployee) return undefined;
     return attendanceRecords.find(
-      (r) => r.employeeId === currentEmployee.id && r.date === todayStr
+      (r) => r.date === todayStr && (
+        r.employeeId === currentEmployee.id ||
+        (Boolean(r.employeeNik) && r.employeeNik.toLowerCase().trim() === currentEmployee.nik.toLowerCase().trim()) ||
+        (Boolean(r.employeeName) && r.employeeName.toLowerCase().trim() === currentEmployee.name.toLowerCase().trim())
+      )
     );
-  }, [attendanceRecords, currentEmployee.id, todayStr]);
+  }, [attendanceRecords, currentEmployee, todayStr]);
 
   // Unique departments
   const departments = useMemo(() => {
@@ -539,19 +548,26 @@ export default function App() {
     showToast('Permohonan cuti/izin berhasil dikirim dan disinkronkan ke Firebase.');
   };
 
-  // Helper to get dates in range
+  // Helper to get dates in range safely without timezone offset or infinite loops
   const getDatesInRange = (startStr: string, endStr: string): string[] => {
+    if (!startStr) return [];
+    const end = endStr || startStr;
     const dates: string[] = [];
-    const curr = new Date(startStr);
-    const end = new Date(endStr);
-    while (curr <= end && !isNaN(curr.getTime())) {
-      dates.push(curr.toISOString().slice(0, 10));
+    const [sy, sm, sd] = startStr.split('-').map(Number);
+    const [ey, em, ed] = end.split('-').map(Number);
+    if (!sy || !sm || !sd) return [startStr];
+    const curr = new Date(sy, sm - 1, sd);
+    const stop = new Date(ey || sy, (em || sm) - 1, ed || sd);
+    let count = 0;
+    while (curr <= stop && count < 60) {
+      const y = curr.getFullYear();
+      const m = String(curr.getMonth() + 1).padStart(2, '0');
+      const d = String(curr.getDate()).padStart(2, '0');
+      dates.push(`${y}-${m}-${d}`);
       curr.setDate(curr.getDate() + 1);
+      count++;
     }
-    if (dates.length === 0 && startStr) {
-      dates.push(startStr);
-    }
-    return dates;
+    return dates.length > 0 ? dates : [startStr];
   };
 
   // Sync all approved leave requests into attendance records on load / change
@@ -854,6 +870,62 @@ export default function App() {
     showToast(`Data pengajuan izin ${targetReq.employeeName} (${targetReq.type}) berhasil dihapus dari sistem & Firebase!`, 'info');
   };
 
+  // Super Admin: Delete All Leave Requests
+  const handleDeleteAllLeaveRequests = () => {
+    leaveRequests.forEach((req) => {
+      if (req.status === 'Disetujui' && req.type === 'Cuti Tahunan') {
+        setEmployees((prev) =>
+          prev.map((emp) => {
+            if (emp.id === req.employeeId) {
+              return {
+                ...emp,
+                remainingLeaveQuota: emp.remainingLeaveQuota + req.totalDays,
+              };
+            }
+            return emp;
+          })
+        );
+      }
+    });
+
+    setAttendanceRecords((prev) => {
+      return prev
+        .filter((rec) => {
+          if (
+            rec.id.startsWith('att-leave-') ||
+            rec.id.startsWith('att-dinas-') ||
+            rec.id.startsWith('att-permit-')
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .map((rec) => {
+          const updatedRec = { ...rec };
+          if (updatedRec.notes && (updatedRec.notes.includes('Izin Terlambat Disetujui') || updatedRec.notes.includes('Izin Pulang Awal Disetujui') || updatedRec.notes.includes('Cuti'))) {
+            const noteParts = updatedRec.notes.split(' • ').filter(
+              (part) =>
+                !part.includes('Izin Terlambat Disetujui') &&
+                !part.includes('Izin Pulang Awal Disetujui') &&
+                !part.includes('Cuti') &&
+                !part.includes('Izin')
+            );
+            updatedRec.notes = noteParts.join(' • ') || undefined;
+          }
+          updatedRec.hasLatePermit = false;
+          updatedRec.hasEarlyPermit = false;
+          return updatedRec;
+        });
+    });
+
+    leaveRequests.forEach((req) => {
+      deleteLeaveRequestFromFirestore(req.id);
+    });
+
+    setLeaveRequests([]);
+    showToast('Semua data pengajuan izin & cuti berhasil dihapus dari sistem & Firebase!', 'info');
+  };
+
   // Super Admin: Edit Leave Request
   const handleEditLeaveRequest = (updatedReq: LeaveRequest) => {
     const oldReq = leaveRequests.find((r) => r.id === updatedReq.id);
@@ -1116,7 +1188,7 @@ export default function App() {
 
     // CASCADE DELETE: Bersihkan seluruh data permohonan izin/cuti karyawan ini
     const toDeleteLeaveIds = leaveRequests
-      .filter((lr) => lr.employeeId !== empId || (empToDelete && lr.employeeName !== empToDelete.name))
+      .filter((lr) => lr.employeeId === empId || (empToDelete && lr.employeeName === empToDelete.name))
       .map((lr) => lr.id);
     toDeleteLeaveIds.forEach((id) => deleteLeaveRequestFromFirestore(id));
     setLeaveRequests((prev) =>
@@ -1549,6 +1621,7 @@ export default function App() {
               onUpdateStatus={handleUpdateLeaveStatus}
               onEditRequest={handleEditLeaveRequest}
               onDeleteRequest={handleDeleteLeaveRequest}
+              onDeleteAllRequests={handleDeleteAllLeaveRequests}
               initialOpenModal={isLeaveModalAutoOpen}
               initialLeaveType={leaveModalInitialType || undefined}
               onClearInitialModal={() => {
@@ -1596,7 +1669,17 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 6: Rekap Bulanan (Format 3.png) */}
+        {/* Tab 6: Rekap Harian */}
+        {activeTab === 'rekap-harian' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <DailyRecap
+              employees={employees}
+              attendanceRecords={attendanceRecords}
+            />
+          </div>
+        )}
+
+        {/* Tab 7: Rekap Bulanan (Format 3.png) */}
         {activeTab === 'rekap-bulanan' && (
           <div className="space-y-6 animate-in fade-in duration-200">
             <MonthlyEmployeeRecap

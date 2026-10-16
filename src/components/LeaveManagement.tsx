@@ -42,6 +42,7 @@ interface LeaveManagementProps {
   onUpdateStatus: (requestId: string, newStatus: 'Disetujui' | 'Ditolak') => void;
   onEditRequest?: (updatedReq: LeaveRequest) => void;
   onDeleteRequest?: (requestId: string) => void;
+  onDeleteAllRequests?: () => void;
   initialOpenModal?: boolean;
   initialLeaveType?: LeaveType;
   onClearInitialModal?: () => void;
@@ -92,11 +93,13 @@ export default function LeaveManagement({
   onUpdateStatus,
   onEditRequest,
   onDeleteRequest,
+  onDeleteAllRequests,
   initialOpenModal,
   initialLeaveType,
   onClearInitialModal,
 }: LeaveManagementProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [filterTab, setFilterTab] = useState<'all' | 'cuti_sakit' | 'terlambat' | 'pulang_awal' | 'pending'>('all');
   const [viewScope, setViewScope] = useState<'all' | 'mine'>('all');
   const [activeQuotaTab, setActiveQuotaTab] = useState<'terlambat' | 'pulang_awal'>('terlambat');
@@ -1097,10 +1100,23 @@ export default function LeaveManagement({
             </div>
 
             {isSuperAdmin ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs">
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
-                <span>Super Admin: Review, Edit & Hapus</span>
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Super Admin: Review, Edit & Hapus</span>
+                </span>
+                {requests.length > 0 && onDeleteAllRequests && (
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteAllModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                    title="Hapus semua pengajuan izin & cuti (Super Admin)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Hapus Semua ({requests.length})</span>
+                  </button>
+                )}
+              </div>
             ) : isAdminOrSuper ? (
               <span className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 font-semibold px-2.5 py-1 rounded-lg">
                 Mode Otoritas Admin: Dapat menyetujui / menolak
@@ -2443,6 +2459,60 @@ export default function LeaveManagement({
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Ya, Hapus Pengajuan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI HAPUS SEMUA PENGAJUAN (SUPER ADMIN) */}
+      {isDeleteAllModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">
+                  Hapus Semua Pengajuan Izin & Cuti?
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold border border-rose-200">
+                  Super Admin
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Apakah Anda yakin ingin menghapus <strong>seluruh {requests.length} data pengajuan</strong> dalam sistem secara permanen?
+              </p>
+
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  Kuota cuti tahunan yang sebelumnya terpotong untuk pengajuan yang disetujui akan otomatis dikembalikan, dan catatan izin pada presensi akan dibersihkan.
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteAllModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteAllRequests) onDeleteAllRequests();
+                  setIsDeleteAllModalOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Semua ({requests.length})</span>
               </button>
             </div>
           </div>

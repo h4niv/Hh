@@ -1,1 +1,67 @@
 @import "tailwindcss";
+
+@media print {
+  /* Hide all non-data UI chrome, navigation, headers, footers, buttons, and dialogs */
+  header,
+  footer,
+  nav,
+  #app-header,
+  .print\:hidden,
+  [data-print-hidden="true"],
+  button {
+    display: none !important;
+  }
+
+  /* Reset body and html margins and backgrounds */
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    font-size: 10px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Allow main container to use full page width without constraints */
+  main {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Remove all shadows, outer borders, rounded corners for crisp print */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Page orientation and tight single-page margins */
+  @page {
+    size: landscape;
+    margin: 5mm;
+  }
+
+  table {
+    font-size: 9.5px !important;
+    page-break-inside: avoid;
+  }
+  th, td {
+    padding: 2px 3px !important;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tfoot {
+    display: table-footer-group;
+  }
+}
+

@@ -90,6 +90,10 @@ export default function HistoryTable({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('Semua');
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 50;
+
   // Selection state for Admin Bulk Actions
   const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
 
@@ -103,6 +107,7 @@ export default function HistoryTable({
 
   const handleSelectPreset = (preset: PeriodPreset) => {
     setPeriodPreset(preset);
+    setCurrentPage(1);
     if (preset === 'kustom') {
       if (!startDate && !endDate) {
         const { startDate: s, endDate: e } = getPresetDateRange('bulan-ini');
@@ -120,33 +125,54 @@ export default function HistoryTable({
     setPeriodPreset('semua');
     setStartDate('');
     setEndDate('');
+    setCurrentPage(1);
   };
 
   // Base records matching period, search, dept, employee (before status filter)
   const basePeriodRecords = useMemo(() => {
     const activeEmpIdSet = new Set(employees.map((e) => e.id));
+    const activeEmpNikSet = new Set(employees.map((e) => e.nik.toLowerCase().trim()));
+    const activeEmpNameSet = new Set(employees.map((e) => e.name.toLowerCase().trim()));
+
     return records.filter((r) => {
-      // Abaikan data karyawan yang sudah dihapus dari daftar karyawan
-      if (!activeEmpIdSet.has(r.employeeId)) return false;
+      // Validasi karyawan jika daftar karyawan sudah tersedia
+      if (employees.length > 0) {
+        const empMatches = activeEmpIdSet.has(r.employeeId) || 
+                           (Boolean(r.employeeNik) && activeEmpNikSet.has(r.employeeNik.toLowerCase().trim())) ||
+                           (Boolean(r.employeeName) && activeEmpNameSet.has(r.employeeName.toLowerCase().trim()));
+        if (!empMatches && !r.employeeName) return false;
+      }
 
       // Pembatasan Akses: Karyawan biasa hanya dapat melihat riwayat presensinya sendiri
-      if (!isAdminOrSuper && r.employeeId !== currentEmployee.id) {
-        return false;
+      if (!isAdminOrSuper) {
+        const isMine = r.employeeId === currentEmployee.id || 
+                       (Boolean(r.employeeNik) && r.employeeNik.trim().toLowerCase() === currentEmployee.nik.trim().toLowerCase()) ||
+                       (Boolean(r.employeeName) && r.employeeName.trim().toLowerCase() === currentEmployee.name.trim().toLowerCase());
+        if (!isMine) {
+          return false;
+        }
       }
 
       const matchPeriod = isDateInPeriod(r.date, startDate, endDate);
       const matchSearch =
-        r.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.employeeNik.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (r.employeeName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (r.employeeNik || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (r.notes && r.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchDept = selectedDept === 'Semua' || r.department === selectedDept;
-      const matchEmp = selectedEmployeeId === 'Semua' || r.employeeId === selectedEmployeeId;
-      const isNotRecapOnly = !r.isMonthlyRecapOnly;
+      
+      let matchEmp = true;
+      if (selectedEmployeeId !== 'Semua') {
+        const targetEmp = employees.find(e => e.id === selectedEmployeeId);
+        matchEmp = r.employeeId === selectedEmployeeId || 
+                   (Boolean(targetEmp) && Boolean(r.employeeNik) && r.employeeNik.trim().toLowerCase() === targetEmp!.nik.trim().toLowerCase()) ||
+                   (Boolean(targetEmp) && Boolean(r.employeeName) && r.employeeName.trim().toLowerCase() === targetEmp!.name.trim().toLowerCase());
+      }
 
-      return matchPeriod && matchSearch && matchDept && matchEmp && isNotRecapOnly;
+      // DO NOT FILTER OUT isMonthlyRecapOnly - show all records
+      return matchPeriod && matchSearch && matchDept && matchEmp;
     });
-  }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedEmployeeId, isAdminOrSuper, currentEmployee.id]);
+  }, [records, employees, startDate, endDate, searchQuery, selectedDept, selectedEmployeeId, isAdminOrSuper, currentEmployee]);
 
   // Filtered records based on status
   const filteredRecords = useMemo(() => {
@@ -168,6 +194,13 @@ export default function HistoryTable({
     }
     return basePeriodRecords.filter((r) => r.status === selectedStatus);
   }, [basePeriodRecords, selectedStatus]);
+
+  // Pagination calculation
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
+  const paginatedRecords = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRecords.slice(start, start + pageSize);
+  }, [filteredRecords, currentPage, pageSize]);
 
   // Period Summary Statistics (calculated over basePeriodRecords)
   const periodStats = useMemo(() => {
@@ -1004,7 +1037,7 @@ export default function HistoryTable({
                 </td>
               </tr>
             ) : (
-              filteredRecords.map((record) => {
+              paginatedRecords.map((record) => {
                 const isLate = record.status === 'Terlambat';
                 const isOnTime = record.status === 'Hadir Tepat Waktu';
                 const isLeave = record.status === 'Izin' || record.status === 'Sakit';
@@ -1242,6 +1275,55 @@ export default function HistoryTable({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Footer */}
+      {filteredRecords.length > pageSize && (
+        <div className="px-5 py-3.5 border-t border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <span>
+              Menampilkan <strong>{Math.min((currentPage - 1) * pageSize + 1, filteredRecords.length)}</strong> - <strong>{Math.min(currentPage * pageSize, filteredRecords.length)}</strong> dari <strong>{filteredRecords.length}</strong> catatan
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 self-center">
+            <button
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(1)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs transition-colors cursor-pointer"
+            >
+              « Pertama
+            </button>
+            <button
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs transition-colors cursor-pointer"
+            >
+              Sebelumnya
+            </button>
+            <span className="px-3 py-1.5 font-bold text-slate-800 bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs transition-colors cursor-pointer"
+            >
+              Berikutnya
+            </button>
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs transition-colors cursor-pointer"
+            >
+              Terakhir »
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Lightbox Photo Preview Modal */}
       {previewPhoto && (
