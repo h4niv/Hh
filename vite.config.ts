@@ -364,7 +364,7 @@ export default defineConfig(() => {
     },
     build: {
       chunkSizeWarningLimit: 4000,
-      outDir: 'dist',
+      outDir: 'build',
     },
     server: {
       host: '0.0.0.0',
