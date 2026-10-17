@@ -102,6 +102,8 @@ export default function MonthlyEmployeeRecap({
   onDeleteMultipleAttendanceRecords,
   onShowToast,
 }: MonthlyEmployeeRecapProps) {
+  if (!currentEmployee) return <div className="p-4 text-center">Memuat data...</div>;
+  console.log('MonthlyEmployeeRecap rendered', { employeesLength: employees.length, attendanceRecordsLength: attendanceRecords.length });
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
 
   // Primary View Mode: 'matrix' (Rekap Akhir / Hasil Akhir) or 'detail' (Laporan Akhir Bulanan / Rincian Pegawai)
