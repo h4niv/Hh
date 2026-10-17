@@ -677,20 +677,6 @@ export default function Header({
             </span>
           </button>
 
-          {/* Rekap Harian */}
-          <button
-            type="button"
-            id="nav-tab-rekap-harian"
-            onClick={() => onTabChange('rekap-harian')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'rekap-harian'
-                ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Calendar className="w-4 h-4 text-blue-500" />
-            <span>Rekap Harian</span>
-          </button>
 
           {/* Laporan Akhir Bulanan Pegawai (Rekap Bulanan Lama / Data Rincian Bulanan) */}
           <button

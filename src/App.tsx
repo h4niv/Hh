@@ -1669,15 +1669,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 6: Rekap Harian */}
-        {activeTab === 'rekap-harian' && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <DailyRecap
-              employees={employees}
-              attendanceRecords={attendanceRecords}
-            />
-          </div>
-        )}
 
         {/* Tab 7: Rekap Bulanan (Format 3.png) */}
         {activeTab === 'rekap-bulanan' && (
