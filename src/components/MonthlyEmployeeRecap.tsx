@@ -102,8 +102,10 @@ export default function MonthlyEmployeeRecap({
   onDeleteMultipleAttendanceRecords,
   onShowToast,
 }: MonthlyEmployeeRecapProps) {
-  if (!currentEmployee) return <div className="p-4 text-center">Memuat data...</div>;
-  console.log('MonthlyEmployeeRecap rendered', { employeesLength: employees.length, attendanceRecordsLength: attendanceRecords.length });
+  if (!currentEmployee) {
+    console.warn('MonthlyEmployeeRecap: currentEmployee is missing', { currentEmployee });
+    return <div className="p-4 text-center text-red-500 font-bold">Error: Data pengguna tidak ditemukan. Silakan refresh halaman atau hubungi admin.</div>;
+  }
   const isAdminOrSuper = currentEmployee.systemRole === 'admin' || currentEmployee.systemRole === 'superadmin';
 
   // Primary View Mode: 'matrix' (Rekap Akhir / Hasil Akhir) or 'detail' (Laporan Akhir Bulanan / Rincian Pegawai)
@@ -518,13 +520,14 @@ export default function MonthlyEmployeeRecap({
     let countAlpa = 0;
 
     const rows = periodDays.map((p, index) => {
-      const record = attendanceRecords.find(
-        r => (
-          (r.employeeId && r.employeeId === targetEmployee.id) ||
+      const record = attendanceRecords.find(r => {
+        if (r.date !== p.dateStr) return false;
+        if (r.employeeId) return r.employeeId === targetEmployee.id;
+        return (
           (r.employeeNik && r.employeeNik.trim().toLowerCase() === targetEmployee.nik.trim().toLowerCase()) ||
           (r.employeeName && r.employeeName.trim().toLowerCase() === targetEmployee.name.trim().toLowerCase())
-        ) && r.date === p.dateStr
-      );
+        );
+      });
 
       const leave = leaveRequests.find(l => isLeaveMatchingEmployeeAndDate(l, targetEmployee, p.dateStr));
 
